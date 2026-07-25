@@ -230,7 +230,7 @@ export default function TeamClient({
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="mx-auto max-w-7xl w-full space-y-6 pb-12">
 
       {/* Workspace Info Card */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6">
@@ -327,7 +327,7 @@ export default function TeamClient({
             onClick={() => {
               setTab(t);
               setEditDraftId(null);
-              router.replace("/team");
+              window.history.replaceState(null, "", `/team?tab=${t}`);
             }}
             className={`shrink-0 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all whitespace-nowrap capitalize ${
               tab === t
