@@ -301,23 +301,20 @@ export default function CreateClient({
     setTranslating(true);
     setAiError("");
     try {
-      const res = await fetch("/api/ai/generate", {
+      const res = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: "rewrite",
-          topic: `Translate the following text into ${targetLang}. Return ONLY the translated text without extra explanation: "${caption}"`,
-          tone: aiTone,
-          existingContent: caption,
-          count: 1
+          text: caption,
+          targetLang,
         })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Translation failed");
-      setCaption(data.result);
+      setCaption(data.translatedText);
       setTranslateOpen(false);
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : "Translation failed");
+      setAiError(err instanceof Error ? err.message : "Google Translate failed");
     } finally {
       setTranslating(false);
     }
@@ -333,7 +330,7 @@ export default function CreateClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: "rewrite",
-          topic: `Enhance the following text by placing relevant, engaging emojis throughout the sentences. Keep the exact text content but add expressive emojis: "${caption}"`,
+          topic: `CRITICAL INSTRUCTION: You must preserve the EXACT words, phrasing, sentences, and punctuation of the original text word-for-word. Do NOT change, rewrite, or rephrase any words. ONLY insert 3 to 6 fitting, expressive emojis into appropriate locations within the existing text: "${caption}"`,
           tone: aiTone,
           existingContent: caption,
           count: 1
@@ -347,6 +344,10 @@ export default function CreateClient({
     } finally {
       setAiLoading(false);
     }
+  };
+
+  const insertEmoji = (emoji: string) => {
+    setCaption((prev) => (prev ? `${prev} ${emoji}` : emoji));
   };
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(() => {
     if (initialPlatforms?.length) return initialPlatforms;
@@ -1200,8 +1201,8 @@ export default function CreateClient({
                             type="button"
                             onClick={() => setTranslateOpen((prev) => !prev)}
                             className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-sm",
-                              translateOpen ? "bg-[#1f2528] text-white border-[#1f2528]" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-[#2f7867]"
+                              "flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-md",
+                              translateOpen ? "bg-[#1f2528] text-white border-[#1f2528]" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-[#2f7867]"
                             )}
                             title="Translate post"
                           >
@@ -1243,7 +1244,7 @@ export default function CreateClient({
                             setAiModalOpen((prev) => !prev);
                           }}
                           className={cn(
-                            "flex h-8 w-8 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-sm",
+                            "flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-md",
                             aiModalOpen ? "bg-[#2f7867] text-white border-[#2f7867] scale-105" : "bg-[#2f7867] text-white border-[#2f7867] hover:scale-110"
                           )}
                           title="AI Writing Assistant"
@@ -1261,26 +1262,27 @@ export default function CreateClient({
                         initial={{ opacity: 0, y: -6, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                        className="absolute right-0 top-full mt-2 z-30 w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl"
+                        className="absolute right-0 top-full mt-2 z-30 w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl space-y-3.5"
                       >
-                        <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                           <div className="flex items-center gap-2">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#2f7867]/10 text-[#2f7867]">
-                              <Sparkles className="h-3.5 w-3.5" />
+                            <span className="flex h-6.5 w-6.5 items-center justify-center rounded-lg bg-[#2f7867]/10 text-[#2f7867]">
+                              <Sparkles className="h-4 w-4" />
                             </span>
-                            <span className="text-xs font-black text-[#1f2528]">AI Assistant</span>
+                            <span className="text-xs font-black text-[#1f2528]">AI Assistant & Tools</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => setAiModalOpen(false)}
-                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
                           >
                             <X className="h-4 w-4" />
                           </button>
                         </div>
 
-                        <div className="space-y-3">
-                          {/* Goal presets + Add Emojis */}
+                        {/* Goal presets + Add Emojis */}
+                        <div>
+                          <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Action Presets</span>
                           <div className="flex flex-wrap gap-1.5">
                             {[
                               { id: "caption", label: "✍️ Caption" },
@@ -1303,89 +1305,134 @@ export default function CreateClient({
                                 {m.label}
                               </button>
                             ))}
-                            {/* Add Emoji Button */}
+                            {/* Smart Add Emojis Button */}
                             <button
                               type="button"
                               onClick={() => void handleAddEmojisToText()}
-                              disabled={aiLoading}
-                              className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-100 transition-all cursor-pointer flex items-center gap-1"
+                              disabled={aiLoading || !caption.trim()}
+                              className="rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition-all cursor-pointer flex items-center gap-1 disabled:opacity-40"
+                              title="Inserts fitting emojis into existing text without changing any words"
                             >
-                              <Smile className="h-3 w-3" /> Add Emojis
+                              <Smile className="h-3 w-3" /> Add Emojis (AI)
                             </button>
                           </div>
+                        </div>
 
-                          {/* Modern Custom Tone Selector */}
-                          <div>
-                            <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Tone of Voice</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {["Authentic", "Professional", "Casual", "Punchy", "Witty"].map((t) => (
-                                <button
-                                  key={t}
-                                  type="button"
-                                  onClick={() => setAiTone(t)}
-                                  className={cn(
-                                    "rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
-                                    aiTone === t
-                                      ? "border-[#1f2528] bg-[#1f2528] text-white"
-                                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                                  )}
-                                >
-                                  {t}
-                                </button>
-                              ))}
-                            </div>
+                        {/* Quick 1-Click Emoji Selector Bar */}
+                        <div>
+                          <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Quick Insert Emoji</span>
+                          <div className="flex flex-wrap gap-1">
+                            {["✨", "🚀", "🔥", "💡", "🎯", "💬", "📈", "🥳", "🙌", "❤️"].map((em) => (
+                              <button
+                                key={em}
+                                type="button"
+                                onClick={() => insertEmoji(em)}
+                                className="h-7 w-7 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:scale-110 transition-transform text-xs flex items-center justify-center cursor-pointer"
+                              >
+                                {em}
+                              </button>
+                            ))}
                           </div>
+                        </div>
 
-                          {/* Topic / Focus Input */}
-                          <div>
-                            <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Custom Prompt / Topic</span>
-                            <input
-                              type="text"
-                              value={aiPromptTopic}
-                              onChange={(e) => setAiPromptTopic(e.target.value)}
-                              placeholder="Key points or topic..."
-                              className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#1f2528] outline-none focus:border-[#2f7867]"
-                            />
+                        {/* Integrated Translate Section */}
+                        <div className="border-t border-slate-100 pt-2.5">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                              <Globe className="h-3 w-3 text-[#2f7867]" /> Translate Post
+                            </span>
+                            {translating && (
+                              <span className="text-[10px] font-bold text-[#2f7867] flex items-center gap-1">
+                                <Loader2 className="h-3 w-3 animate-spin" /> Translating...
+                              </span>
+                            )}
                           </div>
+                          <div className="flex flex-wrap gap-1">
+                            {["Spanish", "French", "German", "Hindi", "Japanese", "Italian", "Portuguese", "English"].map((lang) => (
+                              <button
+                                key={lang}
+                                type="button"
+                                onClick={() => void handleTranslateText(lang)}
+                                disabled={translating || !caption.trim()}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-700 hover:bg-[#2f7867] hover:text-white hover:border-[#2f7867] transition-all cursor-pointer disabled:opacity-40"
+                              >
+                                {lang}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
 
-                          {aiError && <p className="rounded-lg bg-rose-50 p-2 text-xs font-bold text-rose-600">{aiError}</p>}
+                        {/* Modern Custom Tone Selector */}
+                        <div className="border-t border-slate-100 pt-2.5">
+                          <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Tone of Voice</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {["Authentic", "Professional", "Casual", "Punchy", "Witty"].map((t) => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => setAiTone(t)}
+                                className={cn(
+                                  "rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
+                                  aiTone === t
+                                    ? "border-[#1f2528] bg-[#1f2528] text-white"
+                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                                )}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
 
+                        {/* Topic / Focus Input */}
+                        <div>
+                          <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Custom Prompt / Topic</span>
+                          <input
+                            type="text"
+                            value={aiPromptTopic}
+                            onChange={(e) => setAiPromptTopic(e.target.value)}
+                            placeholder="Key points or topic..."
+                            className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#1f2528] outline-none focus:border-[#2f7867]"
+                          />
+                        </div>
+
+                        {aiError && <p className="rounded-lg bg-rose-50 p-2 text-xs font-bold text-rose-600">{aiError}</p>}
+
+                        {aiResult && (
+                          <div className="rounded-xl border border-[#2f7867]/20 bg-[#f4f9f7] p-2.5">
+                            <p className="mb-1 text-[9px] font-extrabold uppercase tracking-wider text-[#2f7867]">AI Suggestion</p>
+                            <p className="max-h-28 overflow-y-auto text-xs leading-relaxed text-slate-800 whitespace-pre-wrap font-medium">{aiResult}</p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleGenerateAiText}
+                            disabled={aiLoading}
+                            className="bg-[#1f2528] text-white hover:bg-[#2b353b] text-xs py-1.5"
+                          >
+                            {aiLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                            {aiLoading ? "Generating..." : "Generate"}
+                          </Button>
                           {aiResult && (
-                            <div className="rounded-xl border border-[#2f7867]/20 bg-[#f4f9f7] p-2.5">
-                              <p className="mb-1 text-[9px] font-extrabold uppercase tracking-wider text-[#2f7867]">AI Suggestion</p>
-                              <p className="max-h-28 overflow-y-auto text-xs leading-relaxed text-slate-800 whitespace-pre-wrap font-medium">{aiResult}</p>
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-end gap-2 pt-1">
                             <Button
                               type="button"
                               size="sm"
-                              onClick={handleGenerateAiText}
-                              disabled={aiLoading}
-                              className="bg-[#1f2528] text-white hover:bg-[#2b353b] text-xs py-1.5"
+                              onClick={() => {
+                                if (aiMode === "hashtags") {
+                                  setCaption((prev) => (prev ? `${prev}\n\n${aiResult}` : aiResult));
+                                } else {
+                                  setCaption(aiResult);
+                                }
+                                setAiModalOpen(false);
+                              }}
+                              className="bg-[#2f7867] text-white hover:bg-[#266254] text-xs py-1.5"
                             >
-                              {aiLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                              {aiLoading ? "Generating..." : "Generate"}
+                              Apply to Post
                             </Button>
-                            {aiResult && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => {
-                                  if (aiMode === "hashtags") {
-                                    setCaption((prev) => (prev ? `${prev}\n\n${aiResult}` : aiResult));
-                                  } else {
-                                    setCaption(aiResult);
-                                  }
-                                  setAiModalOpen(false);
-                                }}
-                                className="bg-[#2f7867] text-white hover:bg-[#266254] text-xs py-1.5"
-                              >
-                                Apply to Post
-                              </Button>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
