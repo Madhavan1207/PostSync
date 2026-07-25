@@ -8,6 +8,7 @@ import {
   Check,
   CircleDashed,
   FileText,
+  Globe,
   Hash,
   Image as ImageIcon,
   Library,
@@ -267,6 +268,9 @@ export default function CreateClient({
   const [aiResult, setAiResult] = useState("");
   const [aiError, setAiError] = useState("");
 
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [translating, setTranslating] = useState(false);
+
   const handleGenerateAiText = async () => {
     setAiLoading(true);
     setAiError("");
@@ -288,6 +292,58 @@ export default function CreateClient({
       setAiResult(data.result);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : "AI generation failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+  const handleTranslateText = async (targetLang: string) => {
+    if (!caption.trim()) return;
+    setTranslating(true);
+    setAiError("");
+    try {
+      const res = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "rewrite",
+          topic: `Translate the following text into ${targetLang}. Return ONLY the translated text without extra explanation: "${caption}"`,
+          tone: aiTone,
+          existingContent: caption,
+          count: 1
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Translation failed");
+      setCaption(data.result);
+      setTranslateOpen(false);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Translation failed");
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const handleAddEmojisToText = async () => {
+    if (!caption.trim()) return;
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const res = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "rewrite",
+          topic: `Enhance the following text by placing relevant, engaging emojis throughout the sentences. Keep the exact text content but add expressive emojis: "${caption}"`,
+          tone: aiTone,
+          existingContent: caption,
+          count: 1
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Emoji addition failed");
+      setCaption(data.result);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Emoji addition failed");
     } finally {
       setAiLoading(false);
     }
@@ -563,6 +619,7 @@ export default function CreateClient({
   const mediaUrlIsImage = Boolean(mediaUrlValue.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i));
   const mediaUrlLooksLikeMedia = Boolean(!isYouTubeUrl && !isWebSearchUrl && mediaUrlValue && (mediaUrlIsVideo || mediaUrlIsImage || mediaUrlValue.includes("/storage/v1/object/public/")));
   const isInvalidMediaPageUrl = Boolean(mediaUrlValue && (isYouTubeUrl || isWebSearchUrl || (!mediaUrlIsVideo && !mediaUrlIsImage && !mediaUrlValue.includes("/storage/v1/object/public/"))));
+  const hasMinChars = (caption.trim().length + postTitle.trim().length) >= 10;
   const platformGuidance = selectedPlatformDetails.length
     ? selectedPlatformDetails.map((p) => {
         if (p.id === "youtube") return "YouTube supports video uploads. Text and image posts must be created directly in YouTube Studio.";
@@ -1024,27 +1081,52 @@ export default function CreateClient({
                 {selectedConnectedPlatforms.length} of {platforms.filter((p) => p.connected).length} connected ready
               </Badge>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-100">
+            <div className="flex gap-3 pt-2.5 pb-3.5 px-1.5 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-100">
               {platforms.map((platform) => {
                 const selected = selectedPlatforms.includes(platform.id);
                 const platformCfg = PLATFORM_CONFIG.find((c) => c.id === platform.id);
                 const isAvailable = !platformCfg || platformCfg.available;
                 const isThreads = platform.id === "threads";
+                const isYouTube = platform.id === "youtube";
                 return (
                   <button key={platform.id} onClick={() => togglePlatform(platform.id)} disabled={!isAvailable}
                     title={!isAvailable ? "This integration is coming soon." : platform.connected ? platform.handle : "Connect this account before publishing"}
-                    className={cn("flex min-w-[160px] shrink-0 items-center gap-3.5 rounded-xl border px-4 py-3 text-left transition-all duration-200 shadow-sm", selected && isThreads ? "bg-slate-950 text-white border-slate-950" : "bg-white hover:bg-[#f2f4ef]", (!platform.connected || !isAvailable) && "opacity-60", !isAvailable && "cursor-not-allowed hover:bg-white", !selected && "border-slate-200/80")}
-                    style={selected && isAvailable && !isThreads ? { borderColor: `${platform.color}77`, backgroundColor: `${platform.color}0d`, transform: "scale(1.02)", boxShadow: `0 4px 12px ${platform.color}15` } : selected && isThreads ? { transform: "scale(1.02)", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" } : undefined}>
-                    <span className={cn("grid h-9.5 w-9.5 shrink-0 place-items-center rounded-xl border shadow-sm transition-transform duration-200", selected && isThreads ? "bg-white border-white text-slate-950" : "border-slate-100 bg-white")} style={{ color: selected && isThreads ? "#000000" : platform.color }}>
+                    className={cn(
+                      "flex min-w-[160px] shrink-0 items-center gap-3.5 rounded-xl border px-4 py-3 text-left transition-all duration-200 shadow-sm cursor-pointer",
+                      selected && isThreads
+                        ? "bg-white text-slate-900 border-slate-900"
+                        : selected && isYouTube
+                        ? "bg-white text-slate-900 border-[#FF0033]"
+                        : selected
+                        ? "bg-white text-slate-900"
+                        : "bg-white hover:bg-[#f2f4ef] text-slate-800",
+                      (!platform.connected || !isAvailable) && "opacity-60",
+                      !isAvailable && "cursor-not-allowed hover:bg-white",
+                      !selected && "border-slate-200/80"
+                    )}
+                    style={
+                      selected && isAvailable && !isThreads
+                        ? { borderColor: `${platform.color}`, backgroundColor: `${platform.color}0d`, transform: "scale(1.02)", boxShadow: `0 0 16px ${platform.color}45, 0 4px 12px ${platform.color}20` }
+                        : selected && isThreads
+                        ? { borderColor: "#000000", backgroundColor: "#0000000d", transform: "scale(1.02)", boxShadow: "0 0 16px rgba(0,0,0,0.35), 0 4px 14px rgba(0,0,0,0.2)" }
+                        : undefined
+                    }>
+                    <span
+                      className={cn(
+                        "grid h-9.5 w-9.5 shrink-0 place-items-center rounded-xl border shadow-sm transition-transform duration-200",
+                        selected && isThreads ? "bg-slate-950 border-slate-950 text-white" : "border-slate-100 bg-white"
+                      )}
+                      style={{ color: selected && isThreads ? "#ffffff" : platform.color }}
+                    >
                       <PlatformLogo id={platform.id} className="h-5 w-5" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className={cn("block text-xs font-black tracking-tight leading-snug", selected && isThreads ? "text-white" : "text-slate-800")}>{platform.name}</span>
-                      <span className={cn("block truncate text-[10px] font-bold mt-0.5", selected && isThreads ? "text-slate-200" : !isAvailable ? "text-amber-500" : platform.connected ? "text-slate-450" : "text-rose-500")}>
+                      <span className="block text-xs font-black tracking-tight leading-snug text-slate-900">{platform.name}</span>
+                      <span className={cn("block truncate text-[10px] font-black mt-0.5", selected && isThreads ? "text-slate-900" : !isAvailable ? "text-amber-500" : platform.connected ? "text-slate-900" : "text-rose-500")}>
                         {!isAvailable ? "Coming soon" : platform.connected ? platform.handle : "Not connected"}
                       </span>
                     </span>
-                    {selected && isAvailable && <Check className="h-4.5 w-4.5 shrink-0" style={{ color: isThreads ? "#ffffff" : platform.color }} />}
+                    {selected && isAvailable && <Check className="h-4.5 w-4.5 shrink-0" style={{ color: isThreads ? "#000000" : platform.color }} />}
                   </button>
                 );
               })}
@@ -1102,20 +1184,75 @@ export default function CreateClient({
                 <div className="relative">
                   <textarea className="min-h-44 w-full resize-none rounded-lg border border-[#1f2528]/12 bg-[#f9faf7] p-4 pb-12 text-sm leading-6 text-[#1f2528] outline-none transition placeholder:text-slate-400 focus:border-[#2f7867]/50 focus:bg-white"
                     placeholder={`What's on your mind, ${displayName.split(" ")[0]}?`} value={caption} onChange={(e) => setCaption(e.target.value)} />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAiPromptTopic(postTitle || caption.slice(0, 100));
-                      setAiModalOpen((prev) => !prev);
-                    }}
-                    className={cn(
-                      "absolute bottom-3 right-3 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-black transition-all z-10 shadow-sm",
-                      aiModalOpen ? "bg-[#2f7867] text-white border-[#2f7867]" : "border-[#2f7867]/30 bg-[#eaf7ef] text-[#2f7867] hover:bg-[#2f7867] hover:text-white"
+
+                  {/* Action Icon Buttons: Visible only when user has written at least 10 characters */}
+                  <AnimatePresence>
+                    {hasMinChars && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: 4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.8, y: 4 }}
+                        className="absolute bottom-3 right-3 flex items-center gap-1.5 z-20"
+                      >
+                        {/* Globe / Translate Button */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setTranslateOpen((prev) => !prev)}
+                            className={cn(
+                              "flex h-8 w-8 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-sm",
+                              translateOpen ? "bg-[#1f2528] text-white border-[#1f2528]" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-[#2f7867]"
+                            )}
+                            title="Translate post"
+                          >
+                            {translating ? <Loader2 className="h-4 w-4 animate-spin text-[#2f7867]" /> : <Globe className="h-4 w-4" />}
+                          </button>
+
+                          {/* Quick Translate Menu */}
+                          {translateOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                              className="absolute right-0 bottom-full mb-2 z-40 w-44 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                            >
+                              <p className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Translate To</p>
+                              <div className="space-y-0.5">
+                                {["Spanish", "French", "German", "Hindi", "Japanese", "Italian", "Portuguese", "English"].map((lang) => (
+                                  <button
+                                    key={lang}
+                                    type="button"
+                                    onClick={() => void handleTranslateText(lang)}
+                                    disabled={translating}
+                                    className="w-full rounded-xl px-2.5 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-[#2f7867]/10 hover:text-[#2f7867] transition-colors flex items-center justify-between cursor-pointer"
+                                  >
+                                    <span>{lang}</span>
+                                    <Globe className="h-3 w-3 opacity-40" />
+                                  </button>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </div>
+
+                        {/* AI Assist Sparkles Icon Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAiPromptTopic(postTitle || caption.slice(0, 100));
+                            setAiModalOpen((prev) => !prev);
+                          }}
+                          className={cn(
+                            "flex h-8 w-8 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-sm",
+                            aiModalOpen ? "bg-[#2f7867] text-white border-[#2f7867] scale-105" : "bg-[#2f7867] text-white border-[#2f7867] hover:scale-110"
+                          )}
+                          title="AI Writing Assistant"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </button>
+                      </motion.div>
                     )}
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    AI Assist
-                  </button>
+                  </AnimatePresence>
 
                   {/* Inline AI Assist Popover Card */}
                   <AnimatePresence>
@@ -1124,26 +1261,26 @@ export default function CreateClient({
                         initial={{ opacity: 0, y: -6, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                        className="absolute right-0 top-full mt-2 z-30 w-full max-w-lg rounded-2xl border border-[#1f2528]/12 bg-white p-4 shadow-2xl"
+                        className="absolute right-0 top-full mt-2 z-30 w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl"
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#2f7867]/10 text-[#2f7867]">
                               <Sparkles className="h-3.5 w-3.5" />
                             </span>
-                            <span className="text-xs font-black text-[#1f2528]">AI Writing Assistant</span>
+                            <span className="text-xs font-black text-[#1f2528]">AI Assistant</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => setAiModalOpen(false)}
-                            className="text-slate-400 hover:text-slate-600"
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
                           >
                             <X className="h-4 w-4" />
                           </button>
                         </div>
 
                         <div className="space-y-3">
-                          {/* Goal presets */}
+                          {/* Goal presets + Add Emojis */}
                           <div className="flex flex-wrap gap-1.5">
                             {[
                               { id: "caption", label: "✍️ Caption" },
@@ -1157,7 +1294,7 @@ export default function CreateClient({
                                 type="button"
                                 onClick={() => setAiMode(m.id as "caption" | "hooks" | "hashtags" | "cta" | "rewrite")}
                                 className={cn(
-                                  "rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-all",
+                                  "rounded-xl border px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
                                   aiMode === m.id
                                     ? "border-[#2f7867] bg-[#2f7867]/10 text-[#2f7867]"
                                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -1166,28 +1303,49 @@ export default function CreateClient({
                                 {m.label}
                               </button>
                             ))}
+                            {/* Add Emoji Button */}
+                            <button
+                              type="button"
+                              onClick={() => void handleAddEmojisToText()}
+                              disabled={aiLoading}
+                              className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 hover:bg-amber-100 transition-all cursor-pointer flex items-center gap-1"
+                            >
+                              <Smile className="h-3 w-3" /> Add Emojis
+                            </button>
                           </div>
 
-                          {/* Prompt & Tone */}
-                          <div className="flex gap-2">
+                          {/* Modern Custom Tone Selector */}
+                          <div>
+                            <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Tone of Voice</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {["Authentic", "Professional", "Casual", "Punchy", "Witty"].map((t) => (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => setAiTone(t)}
+                                  className={cn(
+                                    "rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
+                                    aiTone === t
+                                      ? "border-[#1f2528] bg-[#1f2528] text-white"
+                                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                                  )}
+                                >
+                                  {t}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Topic / Focus Input */}
+                          <div>
+                            <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Custom Prompt / Topic</span>
                             <input
                               type="text"
                               value={aiPromptTopic}
                               onChange={(e) => setAiPromptTopic(e.target.value)}
-                              placeholder="Topic or key points (e.g. product announcement)..."
-                              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-medium text-[#1f2528] outline-none focus:border-[#2f7867]"
+                              placeholder="Key points or topic..."
+                              className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#1f2528] outline-none focus:border-[#2f7867]"
                             />
-                            <select
-                              value={aiTone}
-                              onChange={(e) => setAiTone(e.target.value)}
-                              className="rounded-xl border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#2f7867]"
-                            >
-                              <option value="Authentic">Authentic</option>
-                              <option value="Professional">Professional</option>
-                              <option value="Casual">Casual</option>
-                              <option value="Punchy">Punchy</option>
-                              <option value="Witty">Witty</option>
-                            </select>
                           </div>
 
                           {aiError && <p className="rounded-lg bg-rose-50 p-2 text-xs font-bold text-rose-600">{aiError}</p>}
