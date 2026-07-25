@@ -413,6 +413,25 @@ export default function CreateClient({
       setUploadStatusText(null);
       throw new Error(errMsg);
     }
+    // Step 0: Fast Local Deduplication Check — If this file is already in the user's Media Library, reuse it instantly with 0 upload wait!
+    try {
+      const libRes = await fetch("/api/media-library");
+      if (libRes.ok) {
+        const libData = await libRes.json();
+        const existingItem = (libData.items as MediaLibraryItem[])?.find(
+          (item) =>
+            item.file_name === file.name &&
+            (item.file_size === file.size || Math.abs(item.file_size - file.size) < 100)
+        );
+        if (existingItem?.file_url) {
+          setUploadProgressMap((prev) => ({ ...prev, [key]: 100 }));
+          setUploadStatusText(null);
+          return existingItem.file_url;
+        }
+      }
+    } catch {
+      // Ignore library check error and proceed with upload
+    }
 
     setUploadProgressMap((prev) => ({ ...prev, [key]: 5 }));
 
@@ -657,6 +676,9 @@ export default function CreateClient({
     } else if (attachment && (attachment.type.startsWith("image/") || attachment.type.startsWith("video/"))) {
       const url = await uploadFileToMediaLibrary(attachment);
       if (url) urls.push(url);
+    }
+    if (urls.length === 0 && imageAttachmentPreviews.length > 0) {
+      return imageAttachmentPreviews.filter((url) => url.startsWith("http"));
     }
     return urls;
   };
@@ -913,16 +935,23 @@ export default function CreateClient({
     }
   };
 
-  const attachFromLibrary = async (item: MediaLibraryItem) => {
+  const attachFromLibrary = (item: MediaLibraryItem) => {
     setLibraryAttachingId(item.id);
     setLibraryError(null);
     try {
-      const fileRes = await fetch(item.file_url);
-      if (!fileRes.ok) throw new Error("Could not load this file from the library");
-      const blob = await fileRes.blob();
-      const file = new File([blob], item.file_name, { type: blob.type || (item.file_type === "video" ? "video/mp4" : "image/png") });
-      if (file.type.startsWith("image/")) addImageAttachments([file]);
-      else handleAttachmentChange(file);
+      // Direct reuse of existing Supabase public URL (0 re-uploads, 0 duplicate storage!)
+      setMediaUrl(item.file_url);
+
+      if (item.file_type === "video") {
+        setAttachment(null);
+        setAttachmentPreview(item.file_url);
+        setActiveTab("video");
+      } else {
+        setAttachment(null);
+        setAttachmentPreview(item.file_url);
+        setImageAttachmentPreviews((prev) => [...prev, item.file_url]);
+        setActiveTab("image");
+      }
       setLibraryPickerOpen(false);
     } catch (e) {
       setLibraryError(e instanceof Error ? e.message : "Could not attach this file");

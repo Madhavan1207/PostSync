@@ -54,16 +54,19 @@ export async function POST(req: NextRequest) {
 
     const adminDbClient = getAdminClient() || supabase;
 
-    if (content_hash) {
-      const { data: existing } = await adminDbClient
+    // Fast Deduplication Check by file_name and file_size
+    if (file_name && file_size) {
+      const { data: existingByName } = await adminDbClient
         .from("media_library")
         .select("*")
         .eq("user_id", user.id)
-        .eq("content_hash", content_hash)
+        .eq("file_name", file_name)
+        .eq("file_size", file_size)
+        .limit(1)
         .maybeSingle();
 
-      if (existing) {
-        return NextResponse.json({ item: existing, deduplicated: true });
+      if (existingByName) {
+        return NextResponse.json({ item: existingByName, deduplicated: true });
       }
     }
 
