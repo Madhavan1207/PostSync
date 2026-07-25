@@ -31,6 +31,7 @@ import {
   MoreHorizontal,
   Eye,
   ArrowBigUp,
+  Trash2,
 } from "lucide-react";
 import {
   getConnectedFacebookAccount,
@@ -252,6 +253,7 @@ export default function CreateClient({
   // list instead of replacing whatever was already attached.
   const [imageAttachments, setImageAttachments] = useState<File[]>([]);
   const [imageAttachmentPreviews, setImageAttachmentPreviews] = useState<string[]>([]);
+  const [selectedImageIndices, setSelectedImageIndices] = useState<number[]>([]);
   const MAX_IMAGE_ATTACHMENTS = 10;
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [libraryItems, setLibraryItems] = useState<MediaLibraryItem[]>([]);
@@ -325,20 +327,51 @@ export default function CreateClient({
     setAiLoading(true);
     setAiError("");
     try {
-      const res = await fetch("/api/ai/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "rewrite",
-          topic: `CRITICAL INSTRUCTION: You must preserve the EXACT words, phrasing, sentences, and punctuation of the original text word-for-word. Do NOT change, rewrite, or rephrase any words. ONLY insert 3 to 6 fitting, expressive emojis into appropriate locations within the existing text: "${caption}"`,
-          tone: aiTone,
-          existingContent: caption,
-          count: 1
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Emoji addition failed");
-      setCaption(data.result);
+      const lower = caption.toLowerCase();
+      const matchedEmojis: string[] = [];
+
+      const keywordRules: Array<{ keywords: string[]; emoji: string }> = [
+        { keywords: ["stage", "room", "crowd", "audience", "speech", "talk", "owned"], emoji: "🎤" },
+        { keywords: ["politics", "president", "trump", "biden", "election", "vote", "government"], emoji: "🏛️" },
+        { keywords: ["wild", "history", "chapter", "time", "world", "history-making"], emoji: "📜" },
+        { keywords: ["love", "heart", "favorite", "like"], emoji: "❤️" },
+        { keywords: ["fire", "hot", "trending", "wild", "great"], emoji: "🔥" },
+        { keywords: ["rocket", "launch", "growth", "future"], emoji: "🚀" },
+        { keywords: ["money", "profit", "business", "deal"], emoji: "💼" },
+        { keywords: ["star", "top", "winner"], emoji: "⭐" },
+        { keywords: ["shock", "unbelievable", "crazy", "assassination", "grit"], emoji: "💥" },
+      ];
+
+      for (const item of keywordRules) {
+        if (item.keywords.some((k) => lower.includes(k))) {
+          if (!matchedEmojis.includes(item.emoji)) {
+            matchedEmojis.push(item.emoji);
+          }
+        }
+      }
+
+      if (matchedEmojis.length === 0) {
+        matchedEmojis.push("✨", "🚀", "🔥");
+      }
+
+      const sentences = caption.split(/(?<=[.!?])\s+/);
+      let newText = caption;
+
+      if (sentences.length <= 1) {
+        newText = `${caption} ${matchedEmojis.join(" ")}`;
+      } else {
+        newText = sentences
+          .map((sentence, idx) => {
+            const emojiForSentence = matchedEmojis[idx % matchedEmojis.length];
+            if (emojiForSentence && !sentence.includes(emojiForSentence)) {
+              return `${sentence} ${emojiForSentence}`;
+            }
+            return sentence;
+          })
+          .join(" ");
+      }
+
+      setCaption(newText);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : "Emoji addition failed");
     } finally {
@@ -639,6 +672,60 @@ export default function CreateClient({
   const mediaUrlIsImage = Boolean(mediaUrlValue.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i));
   const mediaUrlLooksLikeMedia = Boolean(!isYouTubeUrl && !isWebSearchUrl && mediaUrlValue && (mediaUrlIsVideo || mediaUrlIsImage || mediaUrlValue.includes("/storage/v1/object/public/")));
   const isInvalidMediaPageUrl = Boolean(mediaUrlValue && (isYouTubeUrl || isWebSearchUrl || (!mediaUrlIsVideo && !mediaUrlIsImage && !mediaUrlValue.includes("/storage/v1/object/public/"))));
+
+  const urlParseResult = useMemo(() => {
+    if (!mediaUrl.trim()) return { validUrls: [], faultyUrls: [], errors: [], isConcatenated: false };
+    
+    // Split concatenated URLs (e.g. .jpghttps:// or .jpeghttps://)
+    const rawSplits = mediaUrl
+      .replace(/(https?:\/\/)/gi, "\n$1")
+      .split(/[\n,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const validUrls: string[] = [];
+    const faultyUrls: string[] = [];
+    const errors: string[] = [];
+
+    const isConcatenated = rawSplits.length > 1 && !mediaUrl.includes("\n");
+
+    for (const raw of rawSplits) {
+      try {
+        const url = new URL(raw);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          faultyUrls.push(raw);
+          errors.push(`"${raw.slice(0, 30)}..." is not a valid http/https URL.`);
+          continue;
+        }
+        if (url.hostname.includes("youtube.com") || url.hostname.includes("youtu.be")) {
+          faultyUrls.push(raw);
+          errors.push("YouTube links cannot be published as direct media files.");
+          continue;
+        }
+        if (url.hostname.includes("search.yahoo") || url.hostname.includes("google.com/search") || url.hostname.includes("bing.com/images")) {
+          faultyUrls.push(raw);
+          errors.push("Web search page links are not direct media files.");
+          continue;
+        }
+        validUrls.push(raw);
+      } catch {
+        faultyUrls.push(raw);
+        errors.push("Malformed URL format detected.");
+      }
+    }
+
+    return { validUrls, faultyUrls, errors, isConcatenated };
+  }, [mediaUrl]);
+
+  const handleAutoFixUrls = () => {
+    if (urlParseResult.validUrls.length > 0) {
+      const cleanText = urlParseResult.validUrls.join("\n");
+      setMediaUrl(cleanText);
+      if (urlParseResult.validUrls.length > 1) {
+        setImageAttachmentPreviews(urlParseResult.validUrls);
+      }
+    }
+  };
   const hasMinChars = (caption.trim().length + postTitle.trim().length) >= 10;
   const platformGuidance = selectedPlatformDetails.length
     ? selectedPlatformDetails.map((p) => {
@@ -1218,69 +1305,91 @@ export default function CreateClient({
                   {/* Action Icon Buttons: Visible only when user has written at least 10 characters */}
                   <AnimatePresence>
                     {hasMinChars && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.8, y: 4 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.8, y: 4 }}
-                        className="absolute bottom-3 right-3 flex items-center gap-1.5 z-20"
-                      >
-                        {/* Globe / Translate Button */}
-                        <div className="relative">
+                      <>
+                        {/* Left-Bottom Actions: Add Emojis & Translate */}
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.8, y: 4 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.8, y: 4 }}
+                          className="absolute bottom-3 left-3 flex items-center gap-2 z-20"
+                        >
+                          {/* Add Emojis Button */}
                           <button
                             type="button"
-                            onClick={() => setTranslateOpen((prev) => !prev)}
-                            className={cn(
-                              "flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-md",
-                              translateOpen ? "bg-[#1f2528] text-white border-[#1f2528]" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-[#2f7867]"
-                            )}
-                            title="Translate post"
+                            onClick={() => void handleAddEmojisToText()}
+                            disabled={aiLoading || !caption.trim()}
+                            className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-300/80 bg-amber-50/90 px-3 text-xs font-bold text-amber-900 shadow-sm hover:bg-amber-100 transition-all cursor-pointer disabled:opacity-40"
+                            title="Inserts relevant emojis into text without changing any words"
                           >
-                            {translating ? <Loader2 className="h-4 w-4 animate-spin text-[#2f7867]" /> : <Globe className="h-4 w-4" />}
+                            <Smile className="h-4 w-4 text-amber-600 shrink-0" />
+                            <span>Add Emojis</span>
                           </button>
 
-                          {/* Quick Translate Menu */}
-                          {translateOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                              className="absolute right-0 bottom-full mb-2 z-40 w-44 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                          {/* Globe / Translate Button */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setTranslateOpen((prev) => !prev)}
+                              className={cn(
+                                "flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-sm",
+                                translateOpen ? "bg-[#1f2528] text-white border-[#1f2528]" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-[#2f7867]"
+                              )}
+                              title="Translate post"
                             >
-                              <p className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Translate To</p>
-                              <div className="space-y-0.5">
-                                {["Spanish", "French", "German", "Hindi", "Japanese", "Italian", "Portuguese", "English"].map((lang) => (
-                                  <button
-                                    key={lang}
-                                    type="button"
-                                    onClick={() => void handleTranslateText(lang)}
-                                    disabled={translating}
-                                    className="w-full rounded-xl px-2.5 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-[#2f7867]/10 hover:text-[#2f7867] transition-colors flex items-center justify-between cursor-pointer"
-                                  >
-                                    <span>{lang}</span>
-                                    <Globe className="h-3 w-3 opacity-40" />
-                                  </button>
-                                ))}
-                              </div>
-                            </motion.div>
-                          )}
-                        </div>
+                              {translating ? <Loader2 className="h-4 w-4 animate-spin text-[#2f7867]" /> : <Globe className="h-4 w-4" />}
+                            </button>
 
-                        {/* AI Assist Sparkles Icon Button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAiPromptTopic(postTitle || caption.slice(0, 100));
-                            setAiModalOpen((prev) => !prev);
-                          }}
-                          className={cn(
-                            "flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-md",
-                            aiModalOpen ? "bg-[#2f7867] text-white border-[#2f7867] scale-105" : "bg-[#2f7867] text-white border-[#2f7867] hover:scale-110"
-                          )}
-                          title="AI Writing Assistant"
+                            {/* Quick Translate Menu */}
+                            {translateOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                                className="absolute left-0 bottom-full mb-2 z-40 w-44 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                              >
+                                <p className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Translate To</p>
+                                <div className="space-y-0.5">
+                                  {["Spanish", "French", "German", "Hindi", "Japanese", "Italian", "Portuguese", "English"].map((lang) => (
+                                    <button
+                                      key={lang}
+                                      type="button"
+                                      onClick={() => void handleTranslateText(lang)}
+                                      disabled={translating}
+                                      className="w-full rounded-xl px-2.5 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-[#2f7867]/10 hover:text-[#2f7867] transition-colors flex items-center justify-between cursor-pointer"
+                                    >
+                                      <span>{lang}</span>
+                                      <Globe className="h-3 w-3 opacity-40" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </motion.div>
+                            )}
+                          </div>
+                        </motion.div>
+
+                        {/* Right-Bottom Action: AI Assistant Sparkles Button */}
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.8, y: 4 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.8, y: 4 }}
+                          className="absolute bottom-3 right-3 z-20"
                         >
-                          <Sparkles className="h-4 w-4" />
-                        </button>
-                      </motion.div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiPromptTopic(postTitle || caption.slice(0, 100));
+                              setAiModalOpen((prev) => !prev);
+                            }}
+                            className={cn(
+                              "flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer shadow-md",
+                              aiModalOpen ? "bg-[#2f7867] text-white border-[#2f7867] scale-105" : "bg-[#2f7867] text-white border-[#2f7867] hover:scale-110"
+                            )}
+                            title="AI Writing Assistant"
+                          >
+                            <Sparkles className="h-4 w-4" />
+                          </button>
+                        </motion.div>
+                      </>
                     )}
                   </AnimatePresence>
 
@@ -1298,7 +1407,7 @@ export default function CreateClient({
                             <span className="flex h-6.5 w-6.5 items-center justify-center rounded-lg bg-[#2f7867]/10 text-[#2f7867]">
                               <Sparkles className="h-4 w-4" />
                             </span>
-                            <span className="text-xs font-black text-[#1f2528]">AI Assistant & Tools</span>
+                            <span className="text-xs font-black text-[#1f2528]">AI Assistant & Copywriting</span>
                           </div>
                           <button
                             type="button"
@@ -1309,7 +1418,7 @@ export default function CreateClient({
                           </button>
                         </div>
 
-                        {/* Goal presets + Add Emojis */}
+                        {/* Goal presets */}
                         <div>
                           <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Action Presets</span>
                           <div className="flex flex-wrap gap-1.5">
@@ -1334,16 +1443,6 @@ export default function CreateClient({
                                 {m.label}
                               </button>
                             ))}
-                            {/* Smart Add Emojis Button */}
-                            <button
-                              type="button"
-                              onClick={() => void handleAddEmojisToText()}
-                              disabled={aiLoading || !caption.trim()}
-                              className="rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition-all cursor-pointer flex items-center gap-1 disabled:opacity-40"
-                              title="Inserts fitting emojis into existing text without changing any words"
-                            >
-                              <Smile className="h-3 w-3" /> Add Emojis (AI)
-                            </button>
                           </div>
                         </div>
 
@@ -1359,33 +1458,6 @@ export default function CreateClient({
                                 className="h-7 w-7 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:scale-110 transition-transform text-xs flex items-center justify-center cursor-pointer"
                               >
                                 {em}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Integrated Translate Section */}
-                        <div className="border-t border-slate-100 pt-2.5">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                              <Globe className="h-3 w-3 text-[#2f7867]" /> Translate Post
-                            </span>
-                            {translating && (
-                              <span className="text-[10px] font-bold text-[#2f7867] flex items-center gap-1">
-                                <Loader2 className="h-3 w-3 animate-spin" /> Translating...
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {["Spanish", "French", "German", "Hindi", "Japanese", "Italian", "Portuguese", "English"].map((lang) => (
-                              <button
-                                key={lang}
-                                type="button"
-                                onClick={() => void handleTranslateText(lang)}
-                                disabled={translating || !caption.trim()}
-                                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-700 hover:bg-[#2f7867] hover:text-white hover:border-[#2f7867] transition-all cursor-pointer disabled:opacity-40"
-                              >
-                                {lang}
                               </button>
                             ))}
                           </div>
@@ -1558,22 +1630,60 @@ export default function CreateClient({
                 </div>
 
                 {imageAttachments.length > 0 ? (
-                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  <div className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-4">
                     {imageAttachments.map((file, i) => {
                       const fileProgress = uploadProgressMap[file.name];
                       const isUploadingThis = fileProgress !== undefined && fileProgress < 100;
+                      const isSelected = selectedImageIndices.includes(i);
                       return (
-                        <div key={`${file.name}-${i}`} className="group relative aspect-square overflow-hidden rounded-lg border border-[#1f2528]/10 bg-white">
+                        <div
+                          key={`${file.name}-${i}`}
+                          className={cn(
+                            "group relative aspect-square overflow-hidden rounded-xl border border-[#1f2528]/10 bg-white transition-all duration-200 shadow-sm",
+                            isSelected && "ring-2 ring-[#2f7867] ring-offset-2 scale-[0.98]"
+                          )}
+                        >
                           <img src={imageAttachmentPreviews[i]} alt="" className="h-full w-full object-cover" />
-                          {i === 0 && <span className="absolute left-1 top-1 rounded bg-[#1f2528]/70 px-1.5 py-0.5 text-[10px] font-bold text-white z-10">Primary</span>}
+
+                          {/* Google Photos Style Selection Checkbox (Top-Left Corner) */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedImageIndices((prev) =>
+                                prev.includes(i) ? prev.filter((idx) => idx !== i) : [...prev, i]
+                              );
+                            }}
+                            className={cn(
+                              "absolute top-2 left-2 z-20 h-6 w-6 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center shadow-md",
+                              isSelected
+                                ? "border-white bg-[#2f7867] text-white scale-110"
+                                : "border-white/90 bg-black/30 backdrop-blur-sm hover:scale-110 opacity-70 group-hover:opacity-100"
+                            )}
+                            title={isSelected ? "Deselect image" : "Select image"}
+                          >
+                            {isSelected && <Check className="h-3.5 w-3.5 stroke-[3]" />}
+                          </button>
+
+                          {i === 0 && (
+                            <span className="absolute left-9 top-2 rounded-full bg-[#1f2528]/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white backdrop-blur-sm z-10">
+                              Primary
+                            </span>
+                          )}
+
                           {!isUploadingThis && (
-                            <button type="button" onClick={() => removeImageAttachment(i)}
-                              className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-[#1f2528]/70 text-white opacity-0 transition-opacity group-hover:opacity-100 z-10">
+                            <button
+                              type="button"
+                              onClick={() => removeImageAttachment(i)}
+                              className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 z-10 cursor-pointer"
+                              title="Delete image"
+                            >
                               <X className="h-3.5 w-3.5" />
                             </button>
                           )}
+
                           {isUploadingThis && (
-                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md p-1 text-center">
+                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md p-1 text-center">
                               <div className="relative flex items-center justify-center">
                                 <svg className="h-10 w-10 transform -rotate-90 filter drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]" viewBox="0 0 36 36">
                                   <path className="text-white/20" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
@@ -1588,7 +1698,7 @@ export default function CreateClient({
                     })}
                     {imageAttachments.length < MAX_IMAGE_ATTACHMENTS && (
                       <button type="button" onClick={() => attachmentInputRef.current?.click()}
-                        className="grid aspect-square place-items-center rounded-lg border border-dashed border-[#1f2528]/20 bg-white text-slate-400 transition hover:border-[#2f7867]/40 hover:text-[#2f7867]">
+                        className="grid aspect-square place-items-center rounded-xl border-2 border-dashed border-[#1f2528]/20 bg-white text-slate-400 transition hover:border-[#2f7867]/40 hover:text-[#2f7867] cursor-pointer">
                         <ImageIcon className="h-5 w-5" />
                       </button>
                     )}
@@ -1664,10 +1774,59 @@ export default function CreateClient({
 
                 {needsHostedMedia && (
                   <div className="mt-3 space-y-2">
-                    <label className="flex items-center gap-2 rounded-lg border border-[#1f2528]/10 bg-white px-3 py-2.5 text-sm">
-                      <Link2 className="h-4 w-4 shrink-0 text-slate-400" />
-                      <input className="min-w-0 flex-1 bg-transparent text-[#1f2528] outline-none placeholder:text-slate-400" placeholder="Public media URL (direct .jpg, .png, or .mp4 link)" value={mediaUrl} onChange={(e) => setMediaUrl(e.target.value)} />
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Public Media URLs</span>
+                      <span className="text-[11px] text-slate-400 font-bold">Supports multiple URLs (paste one per line)</span>
+                    </div>
+
+                    <div className="relative">
+                      <textarea
+                        rows={mediaUrl.includes("\n") ? 3 : 1}
+                        className="w-full resize-y rounded-xl border border-[#1f2528]/12 bg-white p-3 text-xs text-[#1f2528] outline-none transition placeholder:text-slate-400 focus:border-[#2f7867]/50"
+                        placeholder="Public media URLs (direct .jpg, .png, or .mp4 links — paste multiple URLs one per line)"
+                        value={mediaUrl}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMediaUrl(val);
+                          const splits = val.replace(/(https?:\/\/)/gi, "\n$1").split(/[\n,\s]+/).map((s) => s.trim()).filter((s) => s.startsWith("http"));
+                          if (splits.length > 1) {
+                            setImageAttachmentPreviews(splits);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {/* Faulty URL Warning & Auto-Fix Banner */}
+                    {(urlParseResult.faultyUrls.length > 0 || urlParseResult.isConcatenated) && (
+                      <div className="rounded-xl border border-rose-200 bg-rose-50/90 p-3.5 text-xs text-rose-900 shadow-sm space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            <X className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-black text-rose-900">
+                                {urlParseResult.isConcatenated
+                                  ? "Concatenated / Glued URLs Detected!"
+                                  : "Invalid or Faulty Media URL(s) Detected"}
+                              </p>
+                              <p className="mt-0.5 font-medium text-rose-700">
+                                {urlParseResult.isConcatenated
+                                  ? "You pasted multiple URLs stuck together without spaces or newlines (e.g. .jpeghttps://...). Click Auto-Fix to split them into clean individual URLs."
+                                  : urlParseResult.errors[0] || "Some URLs in your input are malformed or unreachable."}
+                              </p>
+                            </div>
+                          </div>
+                          {urlParseResult.validUrls.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleAutoFixUrls}
+                              className="shrink-0 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition-all cursor-pointer shadow-sm flex items-center gap-1"
+                            >
+                              🛠️ Auto-Fix & Split ({urlParseResult.validUrls.length})
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {isYouTubeUrl && (
                       <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800">
@@ -1681,7 +1840,7 @@ export default function CreateClient({
                       </div>
                     )}
 
-                    {!isYouTubeUrl && isInvalidMediaPageUrl && (
+                    {!isYouTubeUrl && !urlParseResult.isConcatenated && isInvalidMediaPageUrl && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
                         <p className="font-black text-amber-900 flex items-center gap-1.5 mb-1">
                           ⚠ Direct Media File Link Required
@@ -2442,6 +2601,112 @@ export default function CreateClient({
                 )}
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Animated Google Photos Style Floating Bottom Action Bar ── */}
+      <AnimatePresence>
+        {selectedImageIndices.length > 0 && (
+          <motion.div
+            initial={{ y: 90, opacity: 0, scale: 0.95 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 90, opacity: 0, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 350, damping: 28 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-[#1f2528]/95 px-4 py-2.5 shadow-[0_16px_40px_rgba(0,0,0,0.45)] text-white backdrop-blur-xl max-w-xl w-[92vw] sm:w-auto"
+          >
+            {/* Selection Counter Badge */}
+            <div className="flex items-center gap-2 border-r border-slate-700/80 pr-3 shrink-0">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f7867] text-xs font-black shadow-sm">
+                {selectedImageIndices.length}
+              </span>
+              <span className="text-xs font-bold text-slate-200 hidden sm:inline">Selected</span>
+            </div>
+
+            {/* Quick Actions Bar */}
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto no-scrollbar">
+              {/* Select / Deselect All */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedImageIndices.length === imageAttachments.length) {
+                    setSelectedImageIndices([]);
+                  } else {
+                    setSelectedImageIndices(imageAttachments.map((_, idx) => idx));
+                  }
+                }}
+                className="rounded-xl bg-slate-800/90 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 hover:text-white transition-all whitespace-nowrap cursor-pointer"
+              >
+                {selectedImageIndices.length === imageAttachments.length ? "Deselect All" : "Select All"}
+              </button>
+
+              {/* Set as Primary (available when 1 photo is selected) */}
+              {selectedImageIndices.length === 1 && selectedImageIndices[0] !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetIdx = selectedImageIndices[0];
+                    setImageAttachments((prev) => {
+                      const updated = [...prev];
+                      const [moved] = updated.splice(targetIdx, 1);
+                      updated.unshift(moved);
+                      return updated;
+                    });
+                    setImageAttachmentPreviews((prev) => {
+                      const updated = [...prev];
+                      const [moved] = updated.splice(targetIdx, 1);
+                      updated.unshift(moved);
+                      return updated;
+                    });
+                    setSelectedImageIndices([0]);
+                  }}
+                  className="rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1.5 text-xs font-bold hover:bg-amber-500/30 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1"
+                >
+                  ⭐ Make Primary
+                </button>
+              )}
+
+              {/* AI Focus for Selected Photos */}
+              <button
+                type="button"
+                onClick={() => {
+                  setAiPromptTopic(`Write caption focusing on selected ${selectedImageIndices.length} image(s)`);
+                  setAiModalOpen(true);
+                }}
+                className="rounded-xl bg-[#2f7867]/25 text-emerald-300 border border-[#2f7867]/40 px-3 py-1.5 text-xs font-bold hover:bg-[#2f7867]/40 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> AI Focus
+              </button>
+
+              {/* Delete Selected */}
+              <button
+                type="button"
+                onClick={() => {
+                  const toDelete = [...selectedImageIndices].sort((a, b) => b - a);
+                  setImageAttachments((prev) => prev.filter((_, idx) => !selectedImageIndices.includes(idx)));
+                  setImageAttachmentPreviews((prev) => {
+                    toDelete.forEach((idx) => {
+                      if (prev[idx]) URL.revokeObjectURL(prev[idx]);
+                    });
+                    return prev.filter((_, idx) => !selectedImageIndices.includes(idx));
+                  });
+                  setSelectedImageIndices([]);
+                }}
+                className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete ({selectedImageIndices.length})
+              </button>
+            </div>
+
+            {/* Close / Dismiss */}
+            <button
+              type="button"
+              onClick={() => setSelectedImageIndices([])}
+              className="rounded-full p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer shrink-0"
+              title="Clear selection"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
