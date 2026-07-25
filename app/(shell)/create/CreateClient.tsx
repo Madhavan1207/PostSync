@@ -1635,6 +1635,7 @@ export default function CreateClient({
                       const fileProgress = uploadProgressMap[file.name];
                       const isUploadingThis = fileProgress !== undefined && fileProgress < 100;
                       const isSelected = selectedImageIndices.includes(i);
+                      const hasAnySelected = selectedImageIndices.length > 0;
                       return (
                         <div
                           key={`${file.name}-${i}`}
@@ -1655,14 +1656,16 @@ export default function CreateClient({
                               );
                             }}
                             className={cn(
-                              "absolute top-2 left-2 z-20 h-6 w-6 rounded-full border-2 transition-all cursor-pointer flex items-center justify-center shadow-md",
+                              "absolute top-2 left-2 z-20 h-6 w-6 rounded-full border-2 transition-all duration-200 cursor-pointer flex items-center justify-center shadow-md",
                               isSelected
-                                ? "border-white bg-[#2f7867] text-white scale-110"
-                                : "border-white/90 bg-black/30 backdrop-blur-sm hover:scale-110 opacity-70 group-hover:opacity-100"
+                                ? "border-white bg-[#2f7867] text-white scale-110 opacity-100"
+                                : hasAnySelected
+                                ? "border-slate-300 bg-white/95 text-slate-400 hover:border-[#2f7867] hover:text-[#2f7867] opacity-100"
+                                : "border-white/90 bg-black/30 backdrop-blur-sm text-transparent hover:scale-110 opacity-0 group-hover:opacity-100"
                             )}
                             title={isSelected ? "Deselect image" : "Select image"}
                           >
-                            {isSelected && <Check className="h-3.5 w-3.5 stroke-[3]" />}
+                            <Check className="h-3.5 w-3.5 stroke-[3]" />
                           </button>
 
                           {i === 0 && (
@@ -2613,14 +2616,14 @@ export default function CreateClient({
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 90, opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 350, damping: 28 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-[#1f2528]/95 px-4 py-2.5 shadow-[0_16px_40px_rgba(0,0,0,0.45)] text-white backdrop-blur-xl max-w-xl w-[92vw] sm:w-auto"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-2xl border border-slate-200/90 bg-white/95 px-4 py-2.5 shadow-[0_20px_60px_rgba(0,0,0,0.12)] text-[#1f2528] backdrop-blur-xl max-w-xl w-[92vw] sm:w-auto"
           >
             {/* Selection Counter Badge */}
-            <div className="flex items-center gap-2 border-r border-slate-700/80 pr-3 shrink-0">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f7867] text-xs font-black shadow-sm">
+            <div className="flex items-center gap-2 border-r border-slate-200 pr-3 shrink-0">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f7867] text-xs font-black text-white shadow-sm">
                 {selectedImageIndices.length}
               </span>
-              <span className="text-xs font-bold text-slate-200 hidden sm:inline">Selected</span>
+              <span className="text-xs font-bold text-[#1f2528] hidden sm:inline">Selected</span>
             </div>
 
             {/* Quick Actions Bar */}
@@ -2635,7 +2638,7 @@ export default function CreateClient({
                     setSelectedImageIndices(imageAttachments.map((_, idx) => idx));
                   }
                 }}
-                className="rounded-xl bg-slate-800/90 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 hover:text-white transition-all whitespace-nowrap cursor-pointer"
+                className="rounded-xl border border-slate-200/80 bg-slate-100/70 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200/80 transition-all whitespace-nowrap cursor-pointer"
               >
                 {selectedImageIndices.length === imageAttachments.length ? "Deselect All" : "Select All"}
               </button>
@@ -2660,7 +2663,7 @@ export default function CreateClient({
                     });
                     setSelectedImageIndices([0]);
                   }}
-                  className="rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1.5 text-xs font-bold hover:bg-amber-500/30 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1"
+                  className="rounded-xl bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1.5 text-xs font-bold hover:bg-amber-100 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1"
                 >
                   ⭐ Make Primary
                 </button>
@@ -2673,7 +2676,7 @@ export default function CreateClient({
                   setAiPromptTopic(`Write caption focusing on selected ${selectedImageIndices.length} image(s)`);
                   setAiModalOpen(true);
                 }}
-                className="rounded-xl bg-[#2f7867]/25 text-emerald-300 border border-[#2f7867]/40 px-3 py-1.5 text-xs font-bold hover:bg-[#2f7867]/40 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1"
+                className="rounded-xl bg-[#2f7867]/10 text-[#2f7867] border border-[#2f7867]/20 px-3 py-1.5 text-xs font-bold hover:bg-[#2f7867]/20 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1"
               >
                 <Sparkles className="h-3.5 w-3.5" /> AI Focus
               </button>
@@ -2692,7 +2695,7 @@ export default function CreateClient({
                   });
                   setSelectedImageIndices([]);
                 }}
-                className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-500 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shadow-sm"
+                className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shadow-sm"
               >
                 <Trash2 className="h-3.5 w-3.5" /> Delete ({selectedImageIndices.length})
               </button>
@@ -2702,7 +2705,7 @@ export default function CreateClient({
             <button
               type="button"
               onClick={() => setSelectedImageIndices([])}
-              className="rounded-full p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer shrink-0"
+              className="rounded-full p-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
               title="Clear selection"
             >
               <X className="h-4 w-4" />

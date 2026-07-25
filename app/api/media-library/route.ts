@@ -54,20 +54,17 @@ export async function POST(req: NextRequest) {
 
     const adminDbClient = getAdminClient() || supabase;
 
-    // Fast Deduplication Check by file_name and file_size
-    if (file_name && file_size) {
-      const { data: existingByName } = await adminDbClient
-        .from("media_library")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("file_name", file_name)
-        .eq("file_size", file_size)
-        .limit(1)
-        .maybeSingle();
+    // Fast Deduplication Check by file_url OR (file_name and file_size)
+    const { data: existingItem } = await adminDbClient
+      .from("media_library")
+      .select("*")
+      .eq("user_id", user.id)
+      .or(`file_url.eq.${file_url},and(file_name.eq.${file_name},file_size.eq.${file_size || 0})`)
+      .limit(1)
+      .maybeSingle();
 
-      if (existingByName) {
-        return NextResponse.json({ item: existingByName, deduplicated: true });
-      }
+    if (existingItem) {
+      return NextResponse.json({ item: existingItem, deduplicated: true });
     }
 
     const { data: mediaItem, error: dbError } = await adminDbClient

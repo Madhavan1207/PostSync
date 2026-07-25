@@ -102,15 +102,31 @@ export default function LibraryClient({ items: initialItems }: Props) {
   const uploadFile = async (file: File) => {
     setUploading(true);
     try {
+      // Pre-check: Prevent duplicate uploads if file already exists in library state
+      const existing = items.find(
+        (item) => item.file_name === file.name && item.file_size === file.size
+      );
+      if (existing) {
+        showToast("File already exists in your library — duplicate upload prevented.", "success");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setUploading(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.set("file", file);
       const res = await fetch("/api/media-library", { method: "POST", body: formData });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "Upload failed.");
-      const { item } = payload;
-      setItems((prev) => [item, ...prev]);
+      const { item, deduplicated } = payload;
+
+      if (deduplicated) {
+        showToast("File already exists in your library — reused existing item.");
+      } else if (item) {
+        setItems((prev) => [item, ...prev.filter((i) => i.id !== item.id)]);
+        showToast("File uploaded to library.");
+      }
       if (fileInputRef.current) fileInputRef.current.value = "";
-      showToast("File uploaded to library.");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Upload failed.", "error");
     } finally {
@@ -283,6 +299,7 @@ export default function LibraryClient({ items: initialItems }: Props) {
             <AnimatePresence>
               {filtered.map((item) => {
                 const isSelected = selectedIds.includes(item.id);
+                const hasAnySelected = selectedIds.length > 0;
                 return (
                   <motion.div
                     key={item.id}
@@ -305,10 +322,12 @@ export default function LibraryClient({ items: initialItems }: Props) {
                         );
                       }}
                       className={cn(
-                        "absolute top-2.5 left-2.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border transition-all cursor-pointer shadow-md",
+                        "absolute top-2.5 left-2.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border transition-all duration-200 cursor-pointer shadow-md",
                         isSelected
-                          ? "border-[#2f7867] bg-[#2f7867] text-white scale-110 ring-2 ring-[#2f7867]/30"
-                          : "border-white/90 bg-black/40 text-transparent hover:border-white hover:bg-black/60 group-hover:opacity-100 opacity-90"
+                          ? "border-[#2f7867] bg-[#2f7867] text-white scale-110 ring-2 ring-[#2f7867]/30 opacity-100"
+                          : hasAnySelected
+                          ? "border-slate-300 bg-white/95 text-slate-400 hover:border-[#2f7867] hover:text-[#2f7867] opacity-100"
+                          : "border-white/90 bg-black/40 text-transparent hover:border-white hover:bg-black/60 opacity-0 group-hover:opacity-100"
                       )}
                       title={isSelected ? "Deselect item" : "Select item"}
                     >
@@ -340,20 +359,20 @@ export default function LibraryClient({ items: initialItems }: Props) {
         )}
       </div>
 
-      {/* Google Photos Style Floating Multi-Select Action Bar */}
+      {/* Light-Themed Google Photos Style Floating Multi-Select Action Bar */}
       <AnimatePresence>
         {selectedIds.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
-            className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-slate-700/80 bg-[#1f2528]/95 px-5 py-3 shadow-2xl backdrop-blur-xl text-white"
+            className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-slate-200/90 bg-white/95 px-5 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.12)] backdrop-blur-xl text-[#1f2528]"
           >
-            <div className="flex items-center gap-2 border-r border-slate-600/70 pr-3">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f7867] text-xs font-black text-white">
+            <div className="flex items-center gap-2 border-r border-slate-200 pr-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f7867] text-xs font-black text-white shadow-sm">
                 {selectedIds.length}
               </span>
-              <span className="text-xs font-bold tracking-wide">
+              <span className="text-xs font-bold tracking-wide text-[#1f2528]">
                 {selectedIds.length} Selected
               </span>
             </div>
@@ -368,7 +387,7 @@ export default function LibraryClient({ items: initialItems }: Props) {
                   setSelectedIds(filtered.map((i) => i.id));
                 }
               }}
-              className="rounded-xl bg-slate-700/60 px-3 py-1.5 text-xs font-bold hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+              className="rounded-xl border border-slate-200/80 bg-slate-100/70 px-3 py-1.5 text-xs font-bold hover:bg-slate-200/80 text-slate-700 transition-colors cursor-pointer"
             >
               {selectedIds.length === filtered.length ? "Deselect All" : "Select All"}
             </button>
@@ -377,9 +396,9 @@ export default function LibraryClient({ items: initialItems }: Props) {
             <button
               type="button"
               onClick={copySelectedUrls}
-              className="flex items-center gap-1.5 rounded-xl bg-slate-700/60 px-3 py-1.5 text-xs font-bold hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-100/70 px-3 py-1.5 text-xs font-bold hover:bg-slate-200/80 text-slate-700 transition-colors cursor-pointer"
             >
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="h-3.5 w-3.5 text-slate-500" />
               <span>Copy URLs</span>
             </button>
 
@@ -398,7 +417,7 @@ export default function LibraryClient({ items: initialItems }: Props) {
               type="button"
               onClick={() => void deleteSelectedItems()}
               disabled={batchDeleting}
-              className="flex items-center gap-1.5 rounded-xl bg-rose-600/90 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors cursor-pointer disabled:opacity-50"
             >
               {batchDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               <span>Delete ({selectedIds.length})</span>
@@ -408,7 +427,7 @@ export default function LibraryClient({ items: initialItems }: Props) {
             <button
               type="button"
               onClick={() => setSelectedIds([])}
-              className="ml-1 text-slate-400 hover:text-white cursor-pointer p-1"
+              className="ml-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer p-1"
               title="Clear selection"
             >
               <X className="h-4 w-4" />
