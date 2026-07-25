@@ -356,7 +356,26 @@ export default function CreateClient({
       setUploadStatusText(null);
       throw new Error(errMsg);
     }
-    setUploadProgressMap((prev) => ({ ...prev, [key]: 10 }));
+
+    setUploadProgressMap((prev) => ({ ...prev, [key]: 5 }));
+
+    // Smooth 0% to 90% progress interpolation tick
+    let currentProgress = 5;
+    const progressInterval = setInterval(() => {
+      if (currentProgress < 90) {
+        const increment = currentProgress < 40 ? Math.floor(Math.random() * 8 + 6) : Math.floor(Math.random() * 4 + 2);
+        currentProgress = Math.min(90, currentProgress + increment);
+        setUploadProgressMap((prev) => ({ ...prev, [key]: currentProgress }));
+      }
+    }, 200);
+
+    const finishProgress = (finalUrl: string) => {
+      clearInterval(progressInterval);
+      setUploadProgressMap((prev) => ({ ...prev, [key]: 100 }));
+      setUploadStatusText(null);
+      return finalUrl;
+    };
+
     const maxRetries = 3;
     let lastError = "";
 
@@ -376,18 +395,13 @@ export default function CreateClient({
             const randomSuffix = Math.random().toString(36).slice(2);
             const storagePath = `${user.id}/${timeStamp}-${randomSuffix}.${fileExt}`;
 
-            setUploadProgressMap((prev) => ({ ...prev, [key]: 35 }));
-
             const { data: uploadData, error: uploadErr } = await supabase.storage
               .from("media-library")
               .upload(storagePath, file, { cacheControl: "3600", upsert: true });
 
-            setUploadProgressMap((prev) => ({ ...prev, [key]: 75 }));
-
             if (!uploadErr && uploadData?.path) {
               const { data: { publicUrl } } = supabase.storage.from("media-library").getPublicUrl(uploadData.path);
 
-              // Register DB metadata via lightweight JSON POST (~200 bytes, no 413!)
               const dbRes = await fetch("/api/media-library", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -400,9 +414,7 @@ export default function CreateClient({
               });
               const dbData = await dbRes.json().catch(() => ({}));
               if (dbRes.ok && (dbData.item?.file_url || publicUrl)) {
-                setUploadStatusText(null);
-                setUploadProgressMap((prev) => ({ ...prev, [key]: 100 }));
-                return dbData.item?.file_url || publicUrl;
+                return finishProgress(dbData.item?.file_url || publicUrl);
               }
             } else if (uploadErr) {
               console.warn("[Media Upload] Direct Supabase storage upload error:", uploadErr.message);
@@ -413,7 +425,6 @@ export default function CreateClient({
         }
 
         // Step 2: Fallback to FormData POST for smaller files
-        setUploadProgressMap((prev) => ({ ...prev, [key]: 55 }));
         const formData = new FormData();
         formData.set("file", file);
 
@@ -421,9 +432,7 @@ export default function CreateClient({
         const payload = await res.json().catch(() => ({}));
 
         if (res.ok && payload.item?.file_url) {
-          setUploadStatusText(null);
-          setUploadProgressMap((prev) => ({ ...prev, [key]: 100 }));
-          return payload.item.file_url;
+          return finishProgress(payload.item.file_url);
         }
 
         lastError = payload.error || `HTTP ${res.status}`;
@@ -437,6 +446,7 @@ export default function CreateClient({
       }
     }
 
+    clearInterval(progressInterval);
     setUploadStatusText(null);
     setUploadProgressMap((prev) => ({ ...prev, [key]: 100 }));
     throw new Error(`Failed to upload "${file.name}" to media storage: ${lastError}`);
@@ -1010,14 +1020,14 @@ export default function CreateClient({
                 return (
                   <button key={platform.id} onClick={() => togglePlatform(platform.id)} disabled={!isAvailable}
                     title={!isAvailable ? "This integration is coming soon." : platform.connected ? platform.handle : "Connect this account before publishing"}
-                    className={cn("flex min-w-[160px] shrink-0 items-center gap-3.5 rounded-xl border px-4 py-3 text-left transition-all duration-200 shadow-sm", selected && isThreads ? "bg-black text-white border-black" : "bg-white hover:bg-[#f2f4ef]", (!platform.connected || !isAvailable) && "opacity-60", !isAvailable && "cursor-not-allowed hover:bg-white", !selected && "border-slate-200/80")}
-                    style={selected && isAvailable && !isThreads ? { borderColor: `${platform.color}77`, backgroundColor: `${platform.color}0d`, transform: "scale(1.02)", boxShadow: `0 4px 12px ${platform.color}15` } : selected && isThreads ? { transform: "scale(1.02)" } : undefined}>
-                    <span className={cn("grid h-9.5 w-9.5 shrink-0 place-items-center rounded-xl border shadow-sm transition-transform duration-200", selected && isThreads ? "bg-zinc-900 border-zinc-800 text-white" : "border-slate-100 bg-white")} style={{ color: selected && isThreads ? "#ffffff" : platform.color }}>
+                    className={cn("flex min-w-[160px] shrink-0 items-center gap-3.5 rounded-xl border px-4 py-3 text-left transition-all duration-200 shadow-sm", selected && isThreads ? "bg-slate-950 text-white border-slate-950" : "bg-white hover:bg-[#f2f4ef]", (!platform.connected || !isAvailable) && "opacity-60", !isAvailable && "cursor-not-allowed hover:bg-white", !selected && "border-slate-200/80")}
+                    style={selected && isAvailable && !isThreads ? { borderColor: `${platform.color}77`, backgroundColor: `${platform.color}0d`, transform: "scale(1.02)", boxShadow: `0 4px 12px ${platform.color}15` } : selected && isThreads ? { transform: "scale(1.02)", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" } : undefined}>
+                    <span className={cn("grid h-9.5 w-9.5 shrink-0 place-items-center rounded-xl border shadow-sm transition-transform duration-200", selected && isThreads ? "bg-white border-white text-slate-950" : "border-slate-100 bg-white")} style={{ color: selected && isThreads ? "#000000" : platform.color }}>
                       <PlatformLogo id={platform.id} className="h-5 w-5" />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className={cn("block text-xs font-black tracking-tight leading-snug", selected && isThreads ? "text-white" : "text-slate-800")}>{platform.name}</span>
-                      <span className={cn("block truncate text-[10px] font-bold mt-0.5", selected && isThreads ? "text-zinc-300" : !isAvailable ? "text-amber-500" : platform.connected ? "text-slate-450" : "text-rose-500")}>
+                      <span className={cn("block truncate text-[10px] font-bold mt-0.5", selected && isThreads ? "text-slate-200" : !isAvailable ? "text-amber-500" : platform.connected ? "text-slate-450" : "text-rose-500")}>
                         {!isAvailable ? "Coming soon" : platform.connected ? platform.handle : "Not connected"}
                       </span>
                     </span>
@@ -1184,13 +1194,13 @@ export default function CreateClient({
                             </button>
                           )}
                           {isUploadingThis && (
-                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm p-1 text-center">
+                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md p-1 text-center">
                               <div className="relative flex items-center justify-center">
-                                <svg className="h-9 w-9 transform -rotate-90" viewBox="0 0 36 36">
-                                  <path className="text-slate-700/80" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                  <path className="text-emerald-400 transition-all duration-300 ease-out" strokeDasharray={`${fileProgress}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                <svg className="h-10 w-10 transform -rotate-90 filter drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]" viewBox="0 0 36 36">
+                                  <path className="text-white/20" strokeWidth="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                  <path className="transition-all duration-300 ease-out" strokeDasharray={`${fileProgress}, 100`} strokeWidth="4" strokeLinecap="round" stroke="url(#uploadRingGradient)" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                                 </svg>
-                                <span className="absolute text-[10px] font-black text-white">{fileProgress}%</span>
+                                <span className="absolute text-[11px] font-black text-white drop-shadow-md">{fileProgress}%</span>
                               </div>
                             </div>
                           )}
@@ -1207,16 +1217,35 @@ export default function CreateClient({
                 ) : (attachmentPreview || mediaUrlLooksLikeMedia) && (
                   <div className="relative mt-3 overflow-hidden rounded-lg border border-[#1f2528]/10 bg-white">
                     {attachment && uploadProgressMap[attachment.name] !== undefined && uploadProgressMap[attachment.name] < 100 && (
-                      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-900/85 backdrop-blur-md p-4 text-center">
+                      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md p-4 text-center border border-white/10 transition-all duration-300">
                         <div className="relative flex items-center justify-center">
-                          <svg className="h-14 w-14 transform -rotate-90" viewBox="0 0 36 36">
-                            <path className="text-slate-700/80" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                            <path className="text-emerald-400 transition-all duration-300 ease-out" strokeDasharray={`${uploadProgressMap[attachment.name]}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                          <svg className="h-16 w-16 transform -rotate-90 filter drop-shadow-[0_0_12px_rgba(16,185,129,0.4)]" viewBox="0 0 36 36">
+                            <defs>
+                              <linearGradient id="uploadRingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#38bdf8" />
+                                <stop offset="100%" stopColor="#34d399" />
+                              </linearGradient>
+                            </defs>
+                            <path className="text-white/20" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                            <path
+                              className="transition-all duration-300 ease-out"
+                              strokeDasharray={`${uploadProgressMap[attachment.name]}, 100`}
+                              strokeWidth="3.5"
+                              strokeLinecap="round"
+                              stroke="url(#uploadRingGradient)"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
                           </svg>
-                          <span className="absolute text-sm font-black text-white">{uploadProgressMap[attachment.name]}%</span>
+                          <span className="absolute text-base font-black text-white tracking-tight drop-shadow-md">
+                            {uploadProgressMap[attachment.name]}%
+                          </span>
                         </div>
-                        <p className="mt-2.5 text-xs font-bold text-slate-200 tracking-wide">Uploading media to storage…</p>
-                        <p className="mt-0.5 text-[11px] text-slate-400">Publishing is paused until upload completes</p>
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                          <p className="text-xs font-black text-white tracking-wide drop-shadow-md">Uploading media to storage…</p>
+                        </div>
+                        <p className="mt-1 text-[11px] font-semibold text-slate-200/80">Publishing is paused until upload completes</p>
                       </div>
                     )}
                     {attachment?.type.startsWith("video/") ? (
