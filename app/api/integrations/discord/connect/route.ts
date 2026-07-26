@@ -1,9 +1,52 @@
+import { z } from "zod";
+import { parseJsonBody } from "@/lib/validation/http";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildDiscordOAuthUrl, fetchDiscordWebhookInfo, DISCORD_PLATFORM } from "@/lib/integrations/discord";
 import { upsertSocialAccount } from "@/lib/integrations/upsert-social-account";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
+import { readWorkspaceIdParam } from "@/lib/validation/oauth";
+
+/**
+ * The stored webhook URL is later fetched AND posted to by the server
+ * (`fetchDiscordWebhookInfo`, `publishToDiscordWebhook`). Accepting an arbitrary
+ * URL would therefore be a server-side request forgery vector — a user could
+ * point it at an internal address and have the server call it. Restricted to
+ * Discord's own webhook endpoint over https.
+ */
+const discordWebhookUrl = z
+  .string()
+  .trim()
+  .min(1, "Discord Webhook URL is required.")
+  .max(512)
+  .refine((value) => {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return false;
+    }
+    const host = url.hostname.toLowerCase();
+    const allowedHost =
+      host === "discord.com" ||
+      host === "discordapp.com" ||
+      host === "ptb.discord.com" ||
+      host === "canary.discord.com";
+    return (
+      url.protocol === "https:" &&
+      allowedHost &&
+      url.pathname.startsWith("/api/webhooks/")
+    );
+  }, "Must be a Discord webhook URL (https://discord.com/api/webhooks/...).");
+
+const DiscordConnectBody = z.object({
+  webhookUrl: discordWebhookUrl,
+  workspaceId: z.string().uuid().nullish(),
+  serverName: z.string().trim().max(200).optional(),
+  channelName: z.string().trim().max(200).optional(),
+  serverLogoUrl: z.string().url().max(1024).optional().nullable(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +55,16 @@ export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(new URL("/", requestUrl.origin));
-  const workspaceId = requestUrl.searchParams.get("workspaceId");
+  // A malformed workspace id previously reached Supabase as-is, where a
+  // non-UUID raises a Postgres type error instead of failing cleanly.
+  const workspaceParam = readWorkspaceIdParam(requestUrl);
+  if (workspaceParam.present && !workspaceParam.valid) {
+    const invalidUrl = new URL("/team", requestUrl.origin);
+    invalidUrl.searchParams.set("discord", "error");
+    invalidUrl.searchParams.set("message", "That workspace link is not valid.");
+    return NextResponse.redirect(invalidUrl);
+  }
+  const workspaceId = workspaceParam.present ? workspaceParam.workspaceId : null;
 
   if (workspaceId) {
     const { data: membership } = await supabase
@@ -51,11 +103,11 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const { webhookUrl, workspaceId, serverName, channelName, serverLogoUrl } = await request.json();
-
-  if (!webhookUrl) {
-    return NextResponse.json({ error: "Discord Webhook URL is required." }, { status: 400 });
-  }
+  const parsedBody = await parseJsonBody(request, DiscordConnectBody, {
+    message: "Discord Webhook URL is required.",
+  });
+  if (!parsedBody.success) return parsedBody.response;
+  const { webhookUrl, workspaceId, serverName, channelName, serverLogoUrl } = parsedBody.data;
 
   if (workspaceId) {
     const { data: membership } = await supabase

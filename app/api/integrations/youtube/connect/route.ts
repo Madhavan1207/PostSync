@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buildYouTubeOAuthUrl } from "@/lib/integrations/youtube";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
+import { readWorkspaceIdParam } from "@/lib/validation/oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,16 @@ export async function GET(request: Request) {
   }
 
   // Present only when connecting from the Team Workspace Accounts tab.
-  const workspaceId = requestUrl.searchParams.get("workspaceId");
+  // A malformed workspace id previously reached Supabase as-is, where a
+  // non-UUID raises a Postgres type error instead of failing cleanly.
+  const workspaceParam = readWorkspaceIdParam(requestUrl);
+  if (workspaceParam.present && !workspaceParam.valid) {
+    const invalidUrl = new URL("/team", requestUrl.origin);
+    invalidUrl.searchParams.set("youtube", "error");
+    invalidUrl.searchParams.set("message", "That workspace link is not valid.");
+    return NextResponse.redirect(invalidUrl);
+  }
+  const workspaceId = workspaceParam.present ? workspaceParam.workspaceId : null;
   if (workspaceId) {
     const { data: membership } = await supabase
       .from("workspace_members")

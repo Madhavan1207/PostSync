@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { parseJsonBody } from "@/lib/validation/http";
 import { createHash } from "crypto";
 
 export const maxDuration = 60; // Allow up to 60 seconds execution time to prevent timeouts on cold GPU starts
@@ -12,13 +14,26 @@ export const maxDuration = 60; // Allow up to 60 seconds execution time to preve
 // Uses Pollinations AI for unlimited free generation with the highly detailed Flux model
 const POLLINATIONS_IMAGE_URL = "https://image.pollinations.ai/prompt/";
 
-interface ImageGenerateRequest {
-  prompt: string;
-  style?: string; // "photorealistic" | "illustration" | "minimalist" | "3d" | "watercolor"
-  aspectRatio?: "square" | "portrait" | "landscape"; // 1:1, 9:16, 16:9
-  usePinterest?: boolean;
-  pinterestIndex?: number;
-}
+/**
+ * `prompt` is the only required field — the Studio's manual image generator
+ * omits `usePinterest`/`pinterestIndex` entirely, so those stay optional.
+ *
+ * The bound on `prompt` is generous (image prompts are descriptive) but real:
+ * the value is `encodeURIComponent`-ed into a Pollinations URL and also sent to
+ * DuckDuckGo, and an unbounded prompt would produce an unbounded outbound URL.
+ * `style` and `aspectRatio` select a fixed modifier string and a fixed
+ * width/height pair respectively, so both are enums of exactly the options the
+ * UI offers, with the same defaults the handler used to apply inline.
+ */
+const ImageGenerateBody = z.object({
+  prompt: z.string().trim().min(3, "Prompt is required").max(2_000, "Prompt is too long."),
+  style: z
+    .enum(["photorealistic", "illustration", "minimalist", "3d", "watercolor", "cinematic"])
+    .default("photorealistic"),
+  aspectRatio: z.enum(["square", "portrait", "landscape"]).default("square"),
+  usePinterest: z.boolean().optional(),
+  pinterestIndex: z.number().int().min(0).max(10_000).default(0),
+});
 
 const STYLE_MODIFIERS: Record<string, string> = {
   photorealistic: "photorealistic, 8k, professional photography, sharp focus, detailed",
@@ -115,12 +130,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body: ImageGenerateRequest = await req.json();
-    const { prompt, style = "photorealistic", aspectRatio = "square", usePinterest } = body;
-
-    if (!prompt || prompt.trim().length < 3) {
-      return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
-    }
+    const parsed = await parseJsonBody(req, ImageGenerateBody, { message: "Prompt is required" });
+    if (!parsed.success) return parsed.response;
+    const { prompt, style, aspectRatio, usePinterest } = parsed.data;
 
     const apiKey = process.env.POLLINATIONS_API_KEY;
     const styleModifier = STYLE_MODIFIERS[style] || STYLE_MODIFIERS.photorealistic;

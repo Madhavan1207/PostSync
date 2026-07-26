@@ -3,9 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageSubmittedReports, canViewReportsSection } from "@/lib/workspace/permissions";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { z } from "zod";
+import { parseRouteParams } from "@/lib/validation/http";
+import { uuid } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+const ReportParams = z.object({ id: uuid, reportId: uuid });
 
 // GET /api/workspace/[id]/reports/[reportId]
 // Full detail for "View Report" / "Download PDF" / "Download CSV":
@@ -17,7 +22,10 @@ export async function GET(
   _req: NextRequest,
   props: { params: Promise<{ id: string; reportId: string }> }
 ) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, ReportParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -77,7 +85,10 @@ export async function DELETE(
   _req: NextRequest,
   props: { params: Promise<{ id: string; reportId: string }> }
 ) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, ReportParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

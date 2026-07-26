@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { readOAuthCallbackParams } from "@/lib/validation/oauth";
 import {
   exchangeRedditCode,
   fetchRedditUser,
@@ -13,9 +14,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const state = requestUrl.searchParams.get("state");
-  const oauthError = requestUrl.searchParams.get("error");
+  // Validated and bounded; an invalid value reads as null so the existing
+  // "missing OAuth data" redirect below handles it exactly as before.
+  const { code, state, error: oauthError } = readOAuthCallbackParams(requestUrl);
   const supabase = await createClient();
 
   const redirect = (status: "connected" | "error", message?: string) => {

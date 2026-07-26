@@ -3,14 +3,25 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canComment, getRoleLabel } from "@/lib/workspace/permissions";
+import { z } from "zod";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { idParams, nonEmptyString } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
 
+/** An empty comment was already a 400; `content` is `text NOT NULL`. */
+const CreateCommentBody = z.object({
+  content: nonEmptyString(5_000),
+});
+
 // ── GET /api/workspace/drafts/[id]/comments ──────────────────
 // Get all comments for a workspace draft
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -61,7 +72,10 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 // ── POST /api/workspace/drafts/[id]/comments ─────────────────
 // Add a comment to a workspace draft
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -79,17 +93,16 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Analysts cannot add comments." }, { status: 403 });
   }
 
-  const { content } = await req.json();
-  if (!content?.trim()) {
-    return NextResponse.json({ error: "Comment content is required." }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(req, CreateCommentBody);
+  if (!parsed.success) return parsed.response;
+  const { content } = parsed.data;
 
   const { data: comment, error } = await supabase
     .from("workspace_draft_comments")
     .insert({
       draft_id: params.id,
       user_id:  user.id,
-      content:  content.trim(),
+      content,
     })
     .select()
     .single();

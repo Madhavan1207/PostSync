@@ -2,10 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { z } from "zod";
 import { canManageMembers } from "@/lib/workspace/permissions";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { emailAddress, idParams, workspaceRole } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `owner` is excluded rather than using the bare `workspaceRole` enum: the
+ * `workspace_invites.role` CHECK constraint only permits manager/creator/analyst,
+ * and ownership is only ever moved via the transfer route.
+ */
+const InviteMemberBody = z.object({
+  email: emailAddress.max(320),
+  role: workspaceRole.exclude(["owner"]),
+});
 
 async function getUserRole(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -24,7 +37,10 @@ async function getUserRole(
 // ── GET /api/workspace/[id]/members ─────────────────────────
 // Returns all members with their email and display name
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -75,7 +91,10 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 // ── POST /api/workspace/[id]/members ────────────────────────
 // Invite a user by email (owner/manager only)
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -86,22 +105,16 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Only the workspace owner can invite members." }, { status: 403 });
   }
 
-  const { email, role: inviteRole } = await req.json();
-
-  if (!email?.trim()) {
-    return NextResponse.json({ error: "Email is required." }, { status: 400 });
-  }
-
-  const validRoles: WorkspaceRole[] = ["manager", "creator", "analyst"];
-  if (!validRoles.includes(inviteRole)) {
-    return NextResponse.json({ error: "Invalid role. Must be manager, creator, or analyst." }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(req, InviteMemberBody);
+  if (!parsed.success) return parsed.response;
+  const { email, role: inviteRole } = parsed.data;
 
   // The invited email must belong to an existing Postelligence account —
   // we never fire off an invite (or email) to an address that hasn't
   // signed up. listUsers() paginates at 50 by default, so page through
   // it rather than trusting the first page to contain the match.
-  const normalizedEmail = email.trim().toLowerCase();
+  // `emailAddress` has already trimmed and lower-cased the value.
+  const normalizedEmail = email;
   let invitedUser: { id: string; email?: string } | undefined;
   for (let page = 1; !invitedUser; page++) {
     const { data: pageData, error: listError } = await admin.auth.admin.listUsers({ page, perPage: 200 });

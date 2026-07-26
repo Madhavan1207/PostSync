@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { parseJsonBody } from "@/lib/validation/http";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * NOT a UUID — `workspace_invites.token` defaults to
+ * `encode(gen_random_bytes(32), 'hex')`, i.e. 64 lowercase hex characters.
+ */
+const AcceptInviteBody = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^[a-f0-9]{64}$/, "Invalid invite token."),
+});
 
 // ── POST /api/workspace/invite/accept ───────────────────────
 // Accept an invite token — adds user to workspace
@@ -13,8 +26,11 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { token } = await req.json();
-  if (!token) return NextResponse.json({ error: "Token is required." }, { status: 400 });
+  const parsed = await parseJsonBody(req, AcceptInviteBody, {
+    message: "Token is required.",
+  });
+  if (!parsed.success) return parsed.response;
+  const { token } = parsed.data;
 
   // Validate the invite. Must not already be accepted OR rejected —
   // a rejected invite is a closed decision and must never be

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buildLinkedInOAuthUrl } from "@/lib/integrations/linkedin";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
+import { readWorkspaceIdParam } from "@/lib/validation/oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,16 @@ export async function GET(request: Request) {
   // `workspaceId` present means "connect this as the workspace's account"
   // (Team Workspace → Accounts tab), gated to Owner/Manager. Personal
   // connects from the Integrations page never send this param.
-  const workspaceId = requestUrl.searchParams.get("workspaceId");
+  // A malformed workspace id previously reached Supabase as-is, where a
+  // non-UUID raises a Postgres type error instead of failing cleanly.
+  const workspaceParam = readWorkspaceIdParam(requestUrl);
+  if (workspaceParam.present && !workspaceParam.valid) {
+    const invalidUrl = new URL("/team", requestUrl.origin);
+    invalidUrl.searchParams.set("linkedin", "error");
+    invalidUrl.searchParams.set("message", "That workspace link is not valid.");
+    return NextResponse.redirect(invalidUrl);
+  }
+  const workspaceId = workspaceParam.present ? workspaceParam.workspaceId : null;
   if (workspaceId) {
     const { data: membership } = await supabase
       .from("workspace_members")

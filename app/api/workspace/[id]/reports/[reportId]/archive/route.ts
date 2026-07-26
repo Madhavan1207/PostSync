@@ -4,9 +4,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canManageSubmittedReports } from "@/lib/workspace/permissions";
 import { getMemberIdsByRole, notifyWorkspaceUsers } from "@/lib/workspace/notifications";
+import { z } from "zod";
+import { parseRouteParams } from "@/lib/validation/http";
+import { uuid } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+const ReportParams = z.object({ id: uuid, reportId: uuid });
 
 // POST /api/workspace/[id]/reports/[reportId]/archive
 // Only Owner/Manager can archive an official report — once archived
@@ -15,7 +20,10 @@ export async function POST(
   _req: NextRequest,
   props: { params: Promise<{ id: string; reportId: string }> }
 ) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, ReportParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { parseRouteParams } from "@/lib/validation/http";
+import { idParams } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +12,11 @@ export const dynamic = "force-dynamic";
 // Owners cannot leave their own workspace — they created it, so
 // the only way out is to dismiss (delete) the whole workspace.
 export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  // No body validation: the client POSTs this with no body at all.
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

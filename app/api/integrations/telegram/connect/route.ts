@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { parseJsonBody } from "@/lib/validation/http";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTelegramBotInfo, fetchTelegramChatInfo, TELEGRAM_PLATFORM } from "@/lib/integrations/telegram";
@@ -6,6 +8,40 @@ import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
+
+/**
+ * This route serves three flows dispatched by `action`:
+ *   - "send_code"   — MTProto phone login step 1 (needs phoneNumber)
+ *   - "verify_code" — MTProto phone login step 2 (needs phone code + hash)
+ *   - no action     — the classic bot-token flow (needs botToken + chatId)
+ *
+ * Which fields are required therefore depends on the flow, so every field is
+ * optional here; the handler keeps its own per-flow required-field checks and
+ * their specific error messages. Validation's job at this layer is to bound
+ * lengths and reject wrong types before anything reaches the Telegram client —
+ * `sessionString` in particular is an opaque MTProto session that would
+ * otherwise be an unbounded string handed straight to the library.
+ */
+const TelegramConnectBody = z.object({
+  action: z.enum(["send_code", "verify_code"]).optional(),
+  phoneNumber: z.string().trim().max(32).optional(),
+  phoneCode: z.string().trim().max(16).optional(),
+  phoneCodeHash: z.string().max(256).optional(),
+  sessionString: z.string().max(8192).optional(),
+  password: z.string().max(256).optional(),
+  botToken: z
+    .string()
+    .trim()
+    .max(256)
+    .regex(/^\d+:[A-Za-z0-9_-]+$/, "Enter a valid Telegram bot token.")
+    .optional(),
+  // Accept a numeric or string chat id, but always hand the handler a string —
+  // that is how it passes chatId to the Telegram API and stores it.
+  chatId: z.coerce.string().trim().max(128).optional(),
+  apiId: z.union([z.string().max(32), z.number()]).optional(),
+  apiHash: z.string().max(128).optional(),
+  workspaceId: z.string().uuid().nullish(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +54,9 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const body = await request.json();
+  const parsedBody = await parseJsonBody(request, TelegramConnectBody);
+  if (!parsedBody.success) return parsedBody.response;
+  const body = parsedBody.data;
   const { action, phoneNumber, phoneCode, phoneCodeHash, sessionString, chatId, botToken, workspaceId, apiId, apiHash } = body;
 
   const effectiveApiId = Number(apiId || DEFAULT_API_ID);

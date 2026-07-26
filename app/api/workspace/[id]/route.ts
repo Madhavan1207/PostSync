@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canDeleteWorkspace } from "@/lib/workspace/permissions";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { idParams, nonEmptyString } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `description` is a plain optional string rather than `optionalString()`:
+ * the column is `text NOT NULL DEFAULT ''`, so "" is a meaningful value that
+ * clears the team profile. Coercing "" to undefined would make it unclearable.
+ */
+const UpdateWorkspaceBody = z.object({
+  name: nonEmptyString(100),
+  description: z.string().trim().max(500, "Must be 500 characters or fewer.").optional(),
+});
 
 // ── Helper: get user's role in a workspace ───────────────────
 async function getUserRole(
@@ -25,7 +38,10 @@ async function getUserRole(
 // ── PATCH /api/workspace/[id] ────────────────────────────────
 // Update workspace name (owner only)
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -36,16 +52,15 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     return NextResponse.json({ error: "Only the workspace owner can update workspace settings." }, { status: 403 });
   }
 
-  const { name, description } = await req.json();
-  if (!name?.trim()) {
-    return NextResponse.json({ error: "Workspace name is required." }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(req, UpdateWorkspaceBody);
+  if (!parsed.success) return parsed.response;
+  const { name, description } = parsed.data;
 
   const { data, error } = await supabase
     .from("workspaces")
     .update({
-      name: name.trim(),
-      description: typeof description === "string" ? description.trim() : undefined,
+      name,
+      description,
       updated_at: new Date().toISOString(),
     })
     .eq("id", params.id)
@@ -58,7 +73,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const { data: userData } = await admin.auth.admin.getUserById(user.id);
   const userName = userData?.user?.user_metadata?.full_name || userData?.user?.email || "Unknown";
   await logActivity(supabase, params.id, user.id, WorkspaceActions.WORKSPACE_UPDATED, {
-    metadata: { user_name: userName, new_name: name.trim() },
+    metadata: { user_name: userName, new_name: name },
   });
 
   return NextResponse.json({ workspace: data });
@@ -67,7 +82,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 // ── DELETE /api/workspace/[id] ───────────────────────────────
 // Delete workspace entirely (owner only)
 export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

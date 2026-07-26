@@ -3,14 +3,28 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canApprove } from "@/lib/workspace/permissions";
+import { z } from "zod";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { idParams, nonEmptyString } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * `reason` is required — the handler already rejected a blank one with a 400,
+ * and it is the only record of *why* a draft came back to its creator.
+ */
+const RejectDraftBody = z.object({
+  reason: nonEmptyString(2_000),
+});
+
 // ── POST /api/workspace/drafts/[id]/reject ───────────────────
 // Manager/Owner rejects a pending draft with a reason
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -28,10 +42,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Only managers and owners can reject drafts." }, { status: 403 });
   }
 
-  const { reason } = await req.json();
-  if (!reason?.trim()) {
-    return NextResponse.json({ error: "A rejection reason is required." }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(req, RejectDraftBody);
+  if (!parsed.success) return parsed.response;
+  const { reason } = parsed.data;
 
   const { data: draft } = await supabase
     .from("workspace_drafts")
@@ -52,7 +65,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       status:           "rejected",
       reviewed_by:      user.id,
       reviewed_at:      new Date().toISOString(),
-      rejection_reason: reason.trim(),
+      rejection_reason: reason,
       updated_at:       new Date().toISOString(),
     })
     .eq("id", params.id)
@@ -66,7 +79,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   await logActivity(supabase, membership.workspace_id, user.id, WorkspaceActions.DRAFT_REJECTED, {
     entityType: "workspace_draft",
     entityId:   params.id,
-    metadata:   { user_name: userName, target_name: draft.title, reason: reason.trim() },
+    metadata:   { user_name: userName, target_name: draft.title, reason },
   });
 
   return NextResponse.json({ draft: updated });

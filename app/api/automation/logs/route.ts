@@ -1,18 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { parseJsonBody } from "@/lib/validation/http";
+import { uuid } from "@/lib/validation/schemas";
 
 type AutomationLogStatus = "pending" | "approved" | "rejected" | "published" | "failed";
 
-// Body accepted by this endpoint — every field is optional because which ones
-// are meaningful depends on `action`.
-interface AutomationLogActionBody {
-  logId?: string;
-  action?: "reject" | "approve" | "edit";
-  caption?: string;
-  mediaUrl?: string;
-  scheduledPostId?: string;
-  status?: AutomationLogStatus;
-}
+/**
+ * Which fields are meaningful depends entirely on `action`, so this is a
+ * discriminated union rather than a bag of optionals: it stops an `edit` from
+ * smuggling in a `status`, or an `approve` from rewriting the caption.
+ *
+ * `status` mirrors the `automation_logs.status` CHECK constraint.
+ *
+ * `caption` (`text NOT NULL`) and `mediaUrl` (`text NOT NULL DEFAULT ''`) use
+ * plain optional strings rather than `optionalString()` — the edit UI must be
+ * able to clear either one, and `optionalString()` would turn a deliberate ""
+ * into "leave unchanged".
+ */
+const automationLogStatus = z.enum([
+  "pending",
+  "approved",
+  "rejected",
+  "published",
+  "failed",
+]) satisfies z.ZodType<AutomationLogStatus>;
+
+const AutomationLogActionBody = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("reject"),
+    logId: uuid,
+  }),
+  z.object({
+    action: z.literal("approve"),
+    logId: uuid,
+    status: automationLogStatus.optional(),
+    scheduledPostId: uuid.optional(),
+  }),
+  z.object({
+    action: z.literal("edit"),
+    logId: uuid,
+    caption: z.string().trim().max(10_000).optional(),
+    mediaUrl: z
+      .union([z.literal(""), z.string().trim().max(2_048).url("Must be a valid URL.")])
+      .optional(),
+  }),
+]);
 
 // Partial `automation_logs` row — only the columns this endpoint ever writes.
 interface AutomationLogUpdate {
@@ -45,28 +78,24 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const parsed = await parseJsonBody(req, AutomationLogActionBody);
+  if (!parsed.success) return parsed.response;
+  const body = parsed.data;
+  const logId = body.logId;
+
   try {
-    const { logId, action, caption, mediaUrl, scheduledPostId, status } =
-      (await req.json()) as AutomationLogActionBody;
-
-    if (!logId) {
-      return NextResponse.json({ error: "Missing logId" }, { status: 400 });
-    }
-
     const updateData: AutomationLogUpdate = {};
 
-    if (action === "reject") {
+    if (body.action === "reject") {
       updateData.status = "rejected";
-    } else if (action === "approve") {
-      updateData.status = status || "approved";
-      if (scheduledPostId) {
-        updateData.scheduled_post_id = scheduledPostId;
+    } else if (body.action === "approve") {
+      updateData.status = body.status || "approved";
+      if (body.scheduledPostId) {
+        updateData.scheduled_post_id = body.scheduledPostId;
       }
-    } else if (action === "edit") {
-      if (caption !== undefined) updateData.caption = caption;
-      if (mediaUrl !== undefined) updateData.media_url = mediaUrl;
     } else {
-      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+      if (body.caption !== undefined) updateData.caption = body.caption;
+      if (body.mediaUrl !== undefined) updateData.media_url = body.mediaUrl;
     }
 
     const { data, error } = await supabase

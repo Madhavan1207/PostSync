@@ -1,12 +1,17 @@
+import { z } from "zod";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { disconnectLocalMetaAccounts } from "@/lib/integrations/local-social-accounts";
 
+/** Only the two Meta-family platforms may be disconnected through this route. */
+const metaPlatform = z.enum(["facebook", "instagram"]);
+
 export const dynamic = "force-dynamic";
 
 function getMetaPlatform(request: Request) {
-  const platform = new URL(request.url).searchParams.get("platform");
-  return platform === "facebook" || platform === "instagram" ? platform : null;
+  const raw = new URL(request.url).searchParams.get("platform");
+  const parsed = metaPlatform.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function DELETE(request: Request) {

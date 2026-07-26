@@ -3,9 +3,29 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canCreateDraft } from "@/lib/workspace/permissions";
-import type { WorkspaceRole, WorkspaceDraftStatus } from "@/types";
+import { z } from "zod";
+import { parseJsonBody, parseSearchParams } from "@/lib/validation/http";
+import { httpUrl, platformId, workspaceDraftStatus } from "@/lib/validation/schemas";
+import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+const ListDraftsQuery = z.object({
+  status: workspaceDraftStatus.optional(),
+});
+
+/**
+ * All fields optional — the handler defaults each one (`title` falls back to
+ * "Untitled", the rest to ""/[]), so a blank draft is a valid save. `title`
+ * and `description` are plain optional strings rather than `optionalString()`
+ * because both columns are `text NOT NULL DEFAULT ''` and "" clears them.
+ */
+const CreateDraftBody = z.object({
+  title: z.string().trim().max(500, "Must be 500 characters or fewer.").optional(),
+  description: z.string().trim().max(20_000, "Must be 20000 characters or fewer.").optional(),
+  media_urls: z.array(httpUrl.max(2_048, "Must be 2048 characters or fewer.")).max(20, "At most 20 media items.").optional(),
+  platforms: z.array(platformId).max(20, "Too many platforms.").optional(),
+});
 
 async function getUserMembership(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data } = await supabase
@@ -27,8 +47,9 @@ export async function GET(req: NextRequest) {
   const membership = await getUserMembership(supabase, user.id);
   if (!membership) return NextResponse.json({ error: "Not in a workspace." }, { status: 403 });
 
-  const url    = new URL(req.url);
-  const status = url.searchParams.get("status") as WorkspaceDraftStatus | null;
+  const parsedQuery = parseSearchParams(req.url, ListDraftsQuery);
+  if (!parsedQuery.success) return parsedQuery.response;
+  const status = parsedQuery.data.status;
 
   let query = supabase
     .from("workspace_drafts")
@@ -76,7 +97,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Only the workspace Owner or a Creator can start a new draft. Managers review, schedule, and publish once a draft is submitted." }, { status: 403 });
   }
 
-  const { title, description, media_urls, platforms } = await req.json();
+  const parsed = await parseJsonBody(req, CreateDraftBody);
+  if (!parsed.success) return parsed.response;
+  const { title, description, media_urls, platforms } = parsed.data;
 
   const { data: draft, error } = await supabase
     .from("workspace_drafts")

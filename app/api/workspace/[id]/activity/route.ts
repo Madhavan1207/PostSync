@@ -1,15 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActionLabel, type WorkspaceAction } from "@/lib/workspace/activity-logger";
+import { parseRouteParams, parseSearchParams } from "@/lib/validation/http";
+import { idParams, queryInt } from "@/lib/validation/schemas";
 import type { WorkspaceRole, WorkspaceActivityLog } from "@/types";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Defaults match the previous `parseInt(param || "30")` behaviour exactly, so an
+ * omitted parameter still yields a 30-row page from offset 0. The upper bound on
+ * `limit` is new — it stops a caller asking for an unbounded page, and every
+ * in-repo caller relies on the default rather than passing a value.
+ */
+const ActivityQuery = z.object({
+  limit:  queryInt({ min: 1, max: 100, default: 30 }),
+  offset: queryInt({ min: 0, default: 0 }),
+});
+
 // ── GET /api/workspace/[id]/activity ────────────────────────
 // Returns paginated activity log for a workspace
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -28,9 +45,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   }
 
   // Pagination via query params
-  const url    = new URL(req.url);
-  const limit  = parseInt(url.searchParams.get("limit")  || "30");
-  const offset = parseInt(url.searchParams.get("offset") || "0");
+  const parsedQuery = parseSearchParams(req.nextUrl, ActivityQuery);
+  if (!parsedQuery.success) return parsedQuery.response;
+  const { limit, offset } = parsedQuery.data;
 
   const { data: logs, error, count } = await supabase
     .from("workspace_activity_log")

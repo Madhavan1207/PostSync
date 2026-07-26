@@ -1,13 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { parseRouteParams } from "@/lib/validation/http";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * NOT a UUID. `workspace_invites.token` is
+ * `text NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex')`
+ * (migration 008), i.e. always exactly 64 lowercase hex characters, and nothing
+ * ever inserts an explicit token.
+ */
+const InviteTokenParams = z.object({
+  token: z
+    .string()
+    .trim()
+    .regex(/^[a-f0-9]{64}$/, "Invalid invite token."),
+});
 
 // ── GET /api/workspace/invite/[token] ───────────────────────
 // Validate an invite token and return workspace info
 // Used to show the "You've been invited to X workspace" page
 export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, InviteTokenParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
 
   const { data: invite, error } = await supabase

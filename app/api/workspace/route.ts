@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { parseJsonBody } from "@/lib/validation/http";
+import { nonEmptyString } from "@/lib/validation/schemas";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `workspaces.name` is `text NOT NULL` with no length constraint, so the bound is
+ * chosen here rather than inherited: 100 characters is well beyond any real team
+ * name and keeps a display value from being unbounded. `nonEmptyString` trims,
+ * which is what the handler did by hand.
+ */
+const CreateWorkspaceBody = z.object({
+  name: nonEmptyString(100),
+});
 
 // ── GET /api/workspace ───────────────────────────────────────
 // Returns the current user's workspace + their role
@@ -61,15 +74,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name } = await req.json();
-  if (!name?.trim()) {
-    return NextResponse.json({ error: "Workspace name is required." }, { status: 400 });
-  }
+  // Parsed after the "already in a workspace" check so that check keeps
+  // answering first, exactly as before.
+  const parsed = await parseJsonBody(req, CreateWorkspaceBody, {
+    message: "Workspace name is required.",
+  });
+  if (!parsed.success) return parsed.response;
+  const { name } = parsed.data;
 
   // Create workspace
   const { data: workspace, error: wsError } = await supabase
     .from("workspaces")
-    .insert({ name: name.trim(), owner_id: user.id })
+    .insert({ name, owner_id: user.id })
     .select()
     .single();
 

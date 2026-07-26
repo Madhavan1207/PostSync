@@ -2,16 +2,25 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
+import { z } from "zod";
 import { requireAdminSession } from "@/lib/admin/guard";
+import { parseJsonBody } from "@/lib/validation/http";
+
+/**
+ * Strict boolean: previously any truthy value flipped the flag, so the string
+ * "false" would have enabled chat support.
+ */
+const ToggleChatBody = z.object({ enabled: z.boolean() });
 
 export async function POST(req: Request) {
   try {
     const denied = await requireAdminSession();
     if (denied) return denied;
 
-    const { enabled } = await req.json();
+    const parsed = await parseJsonBody(req, ToggleChatBody);
+    if (!parsed.success) return parsed.response;
 
-    const isChatEnabled = !!enabled;
+    const isChatEnabled = parsed.data.enabled;
 
     // 1. Always write to local config file (guaranteed success for local dev/prod server runtime)
     try {

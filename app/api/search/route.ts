@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { parseSearchParams } from "@/lib/validation/http";
 import { PLATFORM_CONFIG } from "@/types";
+
+const SearchQuery = z.object({
+  q: z.string().trim().min(2, "Search for at least 2 characters.").max(100),
+});
+
+/**
+ * Escapes characters that are *syntax* inside a PostgREST `or()` filter.
+ *
+ * The filter is built as a string (`title.ilike.%term%,description.ilike.%term%`),
+ * so a comma, dot or parenthesis in user input would be parsed as filter grammar
+ * rather than as text. `%` and `_` are LIKE wildcards and are escaped so a search
+ * for them matches literally.
+ */
+function escapeFilterValue(value: string) {
+  return value.replace(/[%_]/g, "\\$&").replace(/[,.()"']/g, " ");
+}
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +38,13 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const q = req.nextUrl.searchParams.get("q")?.trim() || "";
-  if (q.length < 2) return NextResponse.json({ results: [] });
+  // A query shorter than 2 characters is a normal state for a search-as-you-type
+  // box, not a client error — return empty results rather than a 400.
+  const parsed = parseSearchParams(req.nextUrl, SearchQuery);
+  if (!parsed.success) return NextResponse.json({ results: [] });
 
-  const like = `%${q}%`;
+  const q = parsed.data.q;
+  const like = `%${escapeFilterValue(q)}%`;
   const textFilter = `title.ilike.${like},description.ilike.${like}`;
 
   // Platform-name matching: if the query matches (or is matched by) a

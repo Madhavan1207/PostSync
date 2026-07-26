@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { refreshYouTubeAccessToken } from "@/lib/integrations/youtube";
+import { parseSearchParams } from "@/lib/validation/http";
+import { uuid } from "@/lib/validation/schemas";
 
 export const dynamic = "force-dynamic";
+
+/** `post_id` is a `scheduled_posts` primary key, so it must be a UUID. */
+const DebugYouTubeQuery = z.object({ post_id: uuid });
 
 // GET /api/debug/youtube?post_id=xxx  — call this manually to see exact error
 export async function GET(req: NextRequest) {
@@ -10,8 +16,9 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const postId = req.nextUrl.searchParams.get("post_id");
-  if (!postId) return NextResponse.json({ error: "post_id required" }, { status: 400 });
+  const parsedQuery = parseSearchParams(req.nextUrl, DebugYouTubeQuery);
+  if (!parsedQuery.success) return parsedQuery.response;
+  const postId = parsedQuery.data.post_id;
 
   const { data: post } = await supabase
     .from("scheduled_posts")

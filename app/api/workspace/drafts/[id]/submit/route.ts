@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canSubmit } from "@/lib/workspace/permissions";
+import { parseRouteParams } from "@/lib/validation/http";
+import { idParams } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +12,10 @@ export const dynamic = "force-dynamic";
 // ── POST /api/workspace/drafts/[id]/submit ───────────────────
 // Creator submits a draft for approval
 export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();

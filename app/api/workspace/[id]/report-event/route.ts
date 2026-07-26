@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { z } from "zod";
 import { canExportReports, canViewTeamAnalytics } from "@/lib/workspace/permissions";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { idParams } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +16,9 @@ const EVENT_ACTIONS = {
   export_pdf: WorkspaceActions.REPORT_EXPORTED_PDF,
 } as const;
 
-type EventType = keyof typeof EVENT_ACTIONS;
+const ReportEventBody = z.object({
+  type: z.enum(["generate", "export_csv", "export_pdf"]),
+});
 
 // POST /api/workspace/[id]/report-event
 // Body: { type: "generate" | "export_csv" | "export_pdf" }
@@ -21,7 +26,10 @@ type EventType = keyof typeof EVENT_ACTIONS;
 // signal behind the Analyst's "Reports Generated" / "Reports
 // Exported" contribution metrics.
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -36,11 +44,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   if (!membership) return NextResponse.json({ error: "Not a member." }, { status: 403 });
 
-  const body = await req.json().catch(() => ({}));
-  const type = body?.type as EventType;
-  if (!type || !(type in EVENT_ACTIONS)) {
-    return NextResponse.json({ error: "Invalid event type." }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(req, ReportEventBody);
+  if (!parsed.success) return parsed.response;
+  const { type } = parsed.data;
 
   const role = membership.role as WorkspaceRole;
   if (type === "generate" && !canViewTeamAnalytics(role)) {

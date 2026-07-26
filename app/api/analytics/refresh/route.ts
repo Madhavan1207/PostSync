@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { parseOptionalJsonBody } from "@/lib/validation/http";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getLocalSocialAccounts } from "@/lib/integrations/local-social-accounts";
 import { getAnalyticsDashboard, type AnalyticsAccount } from "@/lib/analytics/social-analytics";
@@ -11,6 +13,17 @@ import {
 } from "@/lib/analytics/analytics-cache";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `parseOptionalJsonBody` rather than `parseJsonBody`: the handler previously did
+ * `req.json().catch(() => ({}))`, so a bodyless POST is a legitimate request
+ * meaning "background refresh" (`force` absent → falsy). Keeping that tolerance
+ * matters because a 400 here would break the analytics page's stale-cache
+ * refresh, which is fire-and-forget.
+ */
+const RefreshAnalyticsBody = z.object({
+  force: z.boolean().optional(),
+});
 
 // POST /api/analytics/refresh
 // Called by:
@@ -26,8 +39,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => ({}));
-  const force = body?.force === true;
+  const parsed = await parseOptionalJsonBody(request, RefreshAnalyticsBody);
+  if (!parsed.success) return parsed.response;
+  const force = parsed.data.force === true;
 
   // If forced (user clicked Refresh), invalidate cache first
   if (force) {
