@@ -327,38 +327,73 @@ export default function CreateClient({
     setAiLoading(true);
     setAiError("");
     try {
+      // Step 1: Call Google Gemini AI for deep semantic context analysis
+      let aiResult: string | null = null;
+      try {
+        const res = await fetch("/api/ai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "rewrite",
+            topic: `STRICT CONTEXT EMOJI INSTRUCTION: Analyze the exact topic, tone, and semantic meaning of the text: "${caption}". Insert 2 to 4 highly relevant, contextually fitting emojis naturally into the text (e.g. greetings get 👋/😊, questions get 🤔/💬, tech gets 💻/⚡, politics gets 🏛️/🎤). CRITICAL: You MUST preserve 100% of the original words word-for-word. DO NOT change, rewrite, or delete ANY words or punctuation. Return ONLY the text with context-appropriate emojis inserted.`,
+            existingContent: caption,
+            count: 1
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.result && typeof data.result === "string" && data.result.length >= caption.length / 2) {
+            aiResult = data.result.trim();
+          }
+        }
+      } catch {
+        // Fallback to rich contextual keyword engine below if network fails
+      }
+
+      if (aiResult) {
+        setCaption(aiResult);
+        return;
+      }
+
+      // Step 2: Fallback to Rich Contextual Keyword Engine
       const lower = caption.toLowerCase();
       const matchedEmojis: string[] = [];
 
-      const keywordRules: Array<{ keywords: string[]; emoji: string }> = [
-        { keywords: ["stage", "room", "crowd", "audience", "speech", "talk", "owned"], emoji: "🎤" },
-        { keywords: ["politics", "president", "trump", "biden", "election", "vote", "government"], emoji: "🏛️" },
-        { keywords: ["wild", "history", "chapter", "time", "world", "history-making"], emoji: "📜" },
-        { keywords: ["love", "heart", "favorite", "like"], emoji: "❤️" },
-        { keywords: ["fire", "hot", "trending", "wild", "great"], emoji: "🔥" },
-        { keywords: ["rocket", "launch", "growth", "future"], emoji: "🚀" },
-        { keywords: ["money", "profit", "business", "deal"], emoji: "💼" },
-        { keywords: ["star", "top", "winner"], emoji: "⭐" },
-        { keywords: ["shock", "unbelievable", "crazy", "assassination", "grit"], emoji: "💥" },
+      const keywordRules: Array<{ keywords: string[]; emojis: string[] }> = [
+        { keywords: ["hello", "hi", "hey", "how do", "doing", "welcome", "greetings", "morning", "evening"], emojis: ["👋", "😊", "💬"] },
+        { keywords: ["thanks", "thank you", "grateful", "appreciate", "blessed", "glad"], emojis: ["🙏", "😊"] },
+        { keywords: ["question", "why", "what", "how", "where", "wonder", "curious", "?"], emojis: ["🤔", "💬"] },
+        { keywords: ["stage", "room", "crowd", "audience", "speech", "talk", "owned"], emojis: ["🎤", "👏"] },
+        { keywords: ["politics", "president", "trump", "biden", "election", "vote", "government"], emojis: ["🏛️", "📢"] },
+        { keywords: ["wild", "history", "chapter", "time", "world", "history-making"], emojis: ["📜", "✨"] },
+        { keywords: ["love", "heart", "favorite", "like", "sweet"], emojis: ["❤️", "😍"] },
+        { keywords: ["fire", "hot", "trending", "wild", "great", "awesome"], emojis: ["🔥", "⚡"] },
+        { keywords: ["rocket", "launch", "growth", "future", "startup"], emojis: ["🚀", "📈"] },
+        { keywords: ["money", "profit", "business", "deal", "sales", "cash"], emojis: ["💼", "💰"] },
+        { keywords: ["star", "top", "winner", "success", "best"], emojis: ["⭐", "🏆"] },
+        { keywords: ["shock", "unbelievable", "crazy", "assassination", "grit"], emojis: ["💥", "😲"] },
+        { keywords: ["coffee", "tea", "drink", "food", "dinner", "lunch"], emojis: ["☕", "🍕"] },
+        { keywords: ["code", "app", "developer", "software", "tech", "ai", "laptop"], emojis: ["💻", "🤖"] },
+        { keywords: ["time", "schedule", "today", "tomorrow", "calendar", "clock"], emojis: ["⏰", "📅"] },
       ];
 
       for (const item of keywordRules) {
         if (item.keywords.some((k) => lower.includes(k))) {
-          if (!matchedEmojis.includes(item.emoji)) {
-            matchedEmojis.push(item.emoji);
-          }
+          item.emojis.forEach((em) => {
+            if (!matchedEmojis.includes(em)) matchedEmojis.push(em);
+          });
         }
       }
 
       if (matchedEmojis.length === 0) {
-        matchedEmojis.push("✨", "🚀", "🔥");
+        matchedEmojis.push("💬", "😊");
       }
 
       const sentences = caption.split(/(?<=[.!?])\s+/);
       let newText = caption;
 
       if (sentences.length <= 1) {
-        newText = `${caption} ${matchedEmojis.join(" ")}`;
+        newText = `${caption} ${matchedEmojis.slice(0, 3).join(" ")}`;
       } else {
         newText = sentences
           .map((sentence, idx) => {
