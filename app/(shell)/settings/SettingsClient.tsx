@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Save, Upload, RotateCcw, X, Crop } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RazorpayCheckoutButton } from "@/components/payments/RazorpayCheckoutButton";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
@@ -91,6 +92,9 @@ export default function SettingsClient({ initialDefaultPlatforms, initialUser }:
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Billing
+  const [paymentResult, setPaymentResult] = useState<string | null>(null);
 
   // Profile details
   const [fullName, setFullName] = useState(initialUser?.user_metadata?.full_name || initialUser?.user_metadata?.name || "");
@@ -577,6 +581,42 @@ export default function SettingsClient({ initialDefaultPlatforms, initialUser }:
               )}
               {error && <span className="text-sm font-bold text-rose-500">{error}</span>}
             </div>
+          </div>
+
+          {/* Billing / Test Payment Card */}
+          <div className="rounded-2xl border border-[#1f2528]/10 bg-white p-6 shadow-[0_8px_32px_rgba(31,37,40,0.06)]">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-black text-[#1f2528]">Billing</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Upgrade to the Pro plan. Payments are processed securely by Razorpay.
+                </p>
+              </div>
+              <span className="rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-[11px] font-bold text-slate-600">
+                ₹500 / mo
+              </span>
+            </div>
+
+            <RazorpayCheckoutButton
+              amount={50000}
+              name="PostSync Pro"
+              description="PostSync Pro — monthly subscription"
+              prefill={{
+                name: initialUser?.user_metadata?.full_name,
+                email: initialUser?.email,
+              }}
+              variant="primary"
+              className="px-6 py-2.5"
+              onSuccess={(r) => setPaymentResult(`Payment successful — ${r.payment_id}`)}
+            >
+              Upgrade to Pro — ₹500
+            </RazorpayCheckoutButton>
+
+            {paymentResult && (
+              <p className="mt-3 flex items-center gap-1.5 text-sm font-bold text-[#2f7867]">
+                <Check className="h-4 w-4" /> {paymentResult}
+              </p>
+            )}
           </div>
 
         </div>
