@@ -14,7 +14,6 @@ import {
   Zap
 } from "lucide-react";
 import { PageTransition } from "@/components/marketing/PageTransition";
-import { OrbitVisual } from "@/components/marketing/OrbitVisual";
 import { PlatformMarquee } from "@/components/marketing/PlatformMarquee";
 import { Reveal } from "@/components/marketing/Reveal";
 import { StatCounter } from "@/components/marketing/StatCounter";
@@ -108,9 +107,9 @@ const testimonials = [
 ];
 
 const stats = [
-  { value: 7, suffix: "+", label: "Platforms supported" },
-  { value: 3, suffix: "×", label: "Faster publishing" },
-  { value: 1, suffix: "", label: "Unified dashboard" }
+  { value: 7, suffix: "+", label: "Platforms supported", icon: Globe2, color: "#2f7867", bgLight: "#eaf7ef" },
+  { value: 3, suffix: "×", label: "Faster publishing", icon: Zap, color: "#d05945", bgLight: "#fff0ed" },
+  { value: 1, suffix: "", label: "Unified dashboard", icon: Sparkles, color: "#0077B5", bgLight: "#e8f1fb" }
 ];
 
 export default function HomePage() {
@@ -125,12 +124,12 @@ export default function HomePage() {
 
   return (
     <PageTransition>
-      <section className="marketing-hero relative overflow-hidden px-5 pb-16 pt-12 md:px-8 md:pb-20 md:pt-16">
+      <section className="marketing-hero relative overflow-hidden px-4 sm:px-6 md:px-8 pb-16 pt-[90px] md:pt-[104px]">
         <div className="marketing-orb marketing-orb-teal" aria-hidden="true" />
         <div className="marketing-orb marketing-orb-coral" aria-hidden="true" />
 
-        <div className="relative mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[minmax(0,1fr)_580px]">
-          <div className="max-w-2xl w-full">
+        <div className="relative mx-auto grid max-w-7xl items-center gap-8 lg:gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(320px,540px)] xl:grid-cols-[minmax(0,1fr)_580px] w-full min-w-0">
+          <div className="max-w-2xl w-full min-w-0">
             <motion.p
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -143,11 +142,14 @@ export default function HomePage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-              className="marketing-display mt-5"
+              className="marketing-display mt-5 max-w-full min-w-0 break-words"
             >
               Create once.
               <br />
-              Publish <RotatingWord />
+              <span className="inline-flex flex-wrap items-baseline gap-x-2 sm:gap-x-3 max-w-full">
+                <span>Publish</span>
+                <RotatingWord />
+              </span>
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 14 }}
@@ -163,42 +165,65 @@ export default function HomePage() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.24 }}
-              className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center"
+              className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center w-full max-w-full"
             >
-              <a href="/login" className="marketing-cta-primary marketing-cta-glow">
+              <a href="/login" className="marketing-cta-primary marketing-cta-glow w-full sm:w-auto text-center justify-center">
                 Start for free
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4 shrink-0" />
               </a>
-              <a href="/features" className="marketing-cta-secondary">
+              <a href="/features" className="marketing-cta-secondary w-full sm:w-auto text-center justify-center">
                 Explore features
               </a>
             </motion.div>
 
+            {/* 3 Stats cards */}
             <motion.div
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.32 }}
-              className="mt-12 grid max-w-2xl grid-cols-3 gap-6 w-full"
+              className="mt-10 grid grid-cols-1 min-[420px]:grid-cols-3 gap-2 sm:gap-4 w-full min-w-0"
             >
-              {stats.map((stat) => (
-                <div key={stat.label} className="marketing-stat-card marketing-stat-card-hover p-6 md:p-8 flex flex-col justify-center min-h-[140px]">
-                  <p className="text-4xl font-bold tracking-[-0.04em] text-[#1f2528] md:text-5xl lg:text-6xl">
-                    <StatCounter value={stat.value} suffix={stat.suffix} />
-                  </p>
-                  <p className="mt-2 text-xs md:text-sm text-[#627078] font-medium leading-normal">{stat.label}</p>
-                </div>
-              ))}
+              {stats.map((stat) => {
+                const StatIcon = stat.icon;
+                return (
+                  <div 
+                    key={stat.label} 
+                    className="marketing-stat-card marketing-stat-card-hover p-3.5 sm:p-5 flex flex-col justify-between min-h-[110px] sm:min-h-[135px] relative group hover:border-[#2f7867]/20 transition-all duration-300 overflow-hidden"
+                  >
+                    {/* Icon container */}
+                    <div 
+                      className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl shadow-sm transition-transform duration-300 group-hover:scale-105"
+                      style={{ backgroundColor: stat.bgLight, color: stat.color }}
+                    >
+                      <StatIcon className="h-4 w-4" />
+                    </div>
+
+                    <div className="mt-2.5 sm:mt-3">
+                      <p className="text-2xl font-extrabold tracking-[-0.04em] text-[#1f2528] sm:text-3xl md:text-4xl flex items-baseline">
+                        <StatCounter value={stat.value} suffix={stat.suffix} />
+                      </p>
+                      <p className="mt-0.5 sm:mt-1 text-xs text-[#627078] font-bold leading-tight">{stat.label}</p>
+                    </div>
+                    
+                    {/* Hover ambient light inside each card */}
+                    <div 
+                      className="pointer-events-none absolute -bottom-10 -right-10 h-20 w-20 rounded-full blur-2xl opacity-0 group-hover:opacity-40 transition-opacity duration-300"
+                      style={{ backgroundColor: stat.color }}
+                    />
+                  </div>
+                );
+              })}
             </motion.div>
           </div>
 
-          <Reveal y={28} className="hidden lg:block lg:-mt-36">
-            <div className="w-[580px] h-[580px] flex items-center justify-center translate-x-8">
+          <Reveal y={28} className="mt-2 lg:mt-0 lg:-mt-44 xl:-mt-52 flex items-center justify-center w-full overflow-hidden max-w-full min-w-0">
+            <div className="flex items-center justify-center -my-24 min-[380px]:-my-18 xs:-my-12 sm:max-lg:-my-6 lg:my-0 scale-[0.56] min-[380px]:scale-[0.66] xs:scale-[0.78] sm:scale-[0.92] md:max-lg:scale-[1.0] lg:scale-85 xl:scale-95 lg:translate-x-0 xl:translate-x-2 transform-gpu transition-all">
               <HomeHeroVisual />
             </div>
           </Reveal>
         </div>
 
-        <div className="relative mx-auto mt-16 max-w-6xl">
+        <div className="relative mx-auto mt-6 sm:mt-12 md:mt-16 max-w-6xl">
           <p className="mb-4 text-center text-[0.78rem] font-bold uppercase tracking-[0.1em] text-[#8a949a]">
             Publish natively, everywhere your audience already is
           </p>
@@ -255,7 +280,7 @@ export default function HomePage() {
                   <span className="text-[0.68rem] font-bold uppercase tracking-wider text-[#2f7867]">AI Prompt Adapter</span>
                   <span className="text-[0.65rem] px-2 py-0.5 rounded bg-[#eaf7ef] text-[#20613a] font-bold">Active</span>
                 </div>
-                <p className="text-xs text-[#627078] italic">&ldquo;Rewrite this post with a professional tone, keeping it under 280 characters for Twitter and formatting as bullet points...&rdquo;</p>
+                <p className="text-xs text-[#627078] italic">&ldquo;Rewrite this post with a professional tone, keeping it under 300 characters for Bluesky and formatting as bullet points...&rdquo;</p>
                 <div className="mt-3 flex items-center justify-end gap-2">
                   <span className="text-[0.68rem] text-[#8a949a]">Adapted:</span>
                   <div className="h-2 w-12 bg-[#2f7867]/20 rounded-full overflow-hidden">
@@ -266,22 +291,22 @@ export default function HomePage() {
             </div>
 
             {/* One post, every channel - Large 2-column card */}
-            <div className="md:col-span-3 rounded-3xl border border-[#1f2528]/8 bg-[#1f2528] text-white p-6 shadow-sm flex flex-col justify-between overflow-hidden relative group min-h-[360px]">
-              <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-white/5 to-transparent rounded-bl-full pointer-events-none" />
+            <div className="md:col-span-3 rounded-3xl border border-[#1f2528]/8 bg-white p-6 shadow-sm flex flex-col justify-between overflow-hidden relative group min-h-[360px]">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#2f7867]/5 to-transparent rounded-bl-full pointer-events-none" />
               <div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white mb-6">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f7867]/10 text-[#2f7867] mb-6">
                   <Globe2 className="h-5 w-5" />
                 </div>
-                <h3 className="text-xl font-bold tracking-tight text-white">One post, every channel</h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/60 max-w-sm">
+                <h3 className="text-xl font-bold tracking-tight text-[#1f2528]">One post, every channel</h3>
+                <p className="mt-2 text-sm leading-relaxed text-[#627078] max-w-sm">
                   Connect all your major platforms via secure native API endpoints. Author your master draft once, and publish to LinkedIn, YouTube, Threads, and Bluesky at once.
                 </p>
               </div>
-              <div className="mt-6 flex flex-wrap gap-2 items-center justify-center py-4 bg-white/5 rounded-2xl border border-white/10 transition-all duration-300 group-hover:bg-white/10">
-                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-medium">LinkedIn API</span>
-                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-medium">Instagram Graph</span>
-                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-medium">YouTube OAuth</span>
-                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-medium">Threads API</span>
+              <div className="mt-6 flex flex-wrap gap-2 items-center justify-center py-4 bg-[#fbfbf9]/80 rounded-2xl border border-[#1f2528]/5 transition-all duration-300 group-hover:bg-slate-100/50">
+                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[#1f2528] font-semibold shadow-sm">LinkedIn API</span>
+                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[#1f2528] font-semibold shadow-sm">Instagram Graph</span>
+                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[#1f2528] font-semibold shadow-sm">YouTube OAuth</span>
+                <span className="text-[0.7rem] px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[#1f2528] font-semibold shadow-sm">Threads API</span>
               </div>
             </div>
 
@@ -508,28 +533,28 @@ export default function HomePage() {
       <section className="px-5 pb-24 pt-16 md:px-8 md:pb-32">
         <div className="mx-auto max-w-6xl">
           <Reveal>
-            <div className="relative overflow-hidden rounded-3xl border border-[#2f7867]/25 bg-gradient-to-br from-[#1f2528] to-[#2d3a40] px-8 py-14 md:px-16 md:py-20 text-center">
+            <div className="relative overflow-hidden rounded-[24px] sm:rounded-[32px] border border-[#1f2528]/8 bg-white px-4 sm:px-8 md:px-16 py-10 sm:py-16 md:py-24 text-center shadow-[0_24px_60px_rgba(0,0,0,0.03)]">
               {/* Background ambient lights */}
-              <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-[#2f7867]/20 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-[#d05945]/15 blur-3xl" />
+              <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-[#2f7867]/8 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-[#d05945]/4 blur-3xl" />
               
               <div className="relative z-10 max-w-2xl mx-auto flex flex-col items-center gap-6">
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-[#56a98f]">
-                  <Zap className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-2 rounded-full border border-[#2f7867]/20 bg-[#eaf7ef] px-4.5 py-1.5 text-xs font-black uppercase tracking-widest text-[#2f7867]">
+                  <Zap className="h-3.5 w-3.5 fill-[#2f7867]/10" />
                   Ready when you are
                 </span>
-                <h2 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
+                <h2 className="text-4xl font-extrabold tracking-tight text-[#1f2528] md:text-6xl">
                   Your audience is waiting.
                 </h2>
-                <p className="max-w-lg text-sm leading-relaxed text-white/60">
+                <p className="max-w-lg text-[0.95rem] leading-relaxed text-[#3b444a] font-semibold">
                   Join creators publishing smarter — with AI-assisted drafts, cross-platform scheduling, and analytics that actually clarify progress.
                 </p>
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
-                  <a href="/login" className="marketing-cta-primary">
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+                  <a href="/login" className="inline-flex items-center gap-2 rounded-full bg-[#2f7867] hover:bg-[#205146] px-8 py-4.5 text-sm font-black uppercase tracking-wider text-white shadow-[0_10px_25px_rgba(47,120,103,0.15)] hover:shadow-none transition-all duration-300 cursor-pointer">
                     Get started free
                     <TrendingUp className="h-4 w-4" />
                   </a>
-                  <a href="/pricing" className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/10 transition-colors">
+                  <a href="/pricing" className="inline-flex items-center gap-2 rounded-full border border-[#1f2528]/10 bg-slate-50 hover:bg-slate-100 px-8 py-4.5 text-sm font-black uppercase tracking-wider text-[#1f2528] transition-all duration-300 cursor-pointer">
                     View pricing
                   </a>
                 </div>

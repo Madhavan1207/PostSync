@@ -1,4 +1,4 @@
-# Scheduled Posts — Developer Guide
+# 17_ Scheduled Posts — Developer Guide
 
 ## What is Scheduled Posts?
 
@@ -21,7 +21,7 @@ For images/text   → just saves the media URL as-is
         ↓
 Row inserted into scheduled_posts with status = "pending"
         ↓
-Supabase pg_cron (odd minutes) and Vercel Cron (even minutes) each run every 2 minutes, staggered
+Supabase pg_cron runs every minute (* * * * *)
         ↓
 Triggers auto-publish Edge Function
         ↓
@@ -112,12 +112,12 @@ This makes the edge function run automatically. Do this once per Supabase projec
 
 **Step 2** — Create the cron job (run in Supabase SQL Editor):
 
-> ⚠️ **Staggered against the Vercel cron.** There are two independent schedulers hitting the same `scheduled_posts` table: this pg_cron job (calls the Supabase Edge Function directly) and the Vercel Cron job (calls `/api/scheduler/run`, see `vercel.json`). Migration `015_atomic_claim_scheduled_posts.sql` already makes it *safe* for both to fire at once via `claim_due_scheduled_posts()` (`FOR UPDATE SKIP LOCKED`), but it's still wasted work — two schedulers racing for the same rows every 60 seconds. Instead of running both on the same tick, they now run **adjacently**: pg_cron takes the **odd** minutes, Vercel cron takes the **even** minutes (`vercel.json` → `"schedule": "*/2 * * * *"`). Together they still cover every minute, they just never collide.
+> 💡 **Single Unified Scheduler.** Supabase `pg_cron` runs every minute (`* * * * *`) directly calling the `auto-publish` Supabase Edge Function. Migration `015_atomic_claim_scheduled_posts.sql` protects post publishing via `claim_due_scheduled_posts()` (`FOR UPDATE SKIP LOCKED`).
 
 ```sql
 select cron.schedule(
-  'auto-publish-odd-minutes',
-  '1-59/2 * * * *',   -- :01, :03, :05 ... (odd minutes only)
+  'auto-publish-every-minute',
+  '* * * * *',   -- runs every minute
   $$
   select net.http_post(
     url := 'https://atbiednsiybijfkvairg.supabase.co/functions/v1/auto-publish',
@@ -129,9 +129,9 @@ select cron.schedule(
 
 Replace `YOUR_SERVICE_ROLE_KEY` with your actual service role key from Supabase Dashboard → Settings → API.
 
-**If you previously had the old every-minute job set up**, remove it first so the two don't overlap:
+**If you previously had the staggered odd-minutes job set up**, remove it first so the two don't overlap:
 ```sql
-SELECT cron.unschedule('auto-publish-every-minute');
+SELECT cron.unschedule('auto-publish-odd-minutes');
 ```
 
 **To verify cron is running:**

@@ -45,7 +45,7 @@ function getClientConfig() {
 }
 
 export function getInstagramRedirectUri(origin: string) {
-  return process.env.INSTAGRAM_REDIRECT_URI || `${origin}/auth/instagram/callback`;
+  return `${origin}/auth/instagram/callback`;
 }
 
 export function buildInstagramOAuthUrl(origin: string, state: string) {

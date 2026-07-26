@@ -30,7 +30,7 @@ export default function FeaturesPage() {
 
   return (
     <PageTransition>
-      <section className="relative overflow-hidden px-5 pb-16 pt-20 md:px-8 md:pb-24 md:pt-28">
+      <section className="relative overflow-hidden px-5 pb-16 pt-[100px] md:px-8 md:pb-24 md:pt-[104px]">
         <div className="pointer-events-none absolute inset-0 -z-10">
           <div className="absolute -top-32 left-1/2 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-gradient-to-b from-[#2f7867]/10 to-transparent blur-3xl" />
         </div>
@@ -100,15 +100,15 @@ export default function FeaturesPage() {
       <section className="px-5 py-16 md:px-8 md:py-20">
         <div className="mx-auto max-w-6xl">
           <Reveal>
-            <div className="relative overflow-hidden rounded-3xl border border-[#1f2528]/8 bg-gradient-to-br from-[#1f2528] to-[#2d3a40] px-8 py-14 md:px-16 md:py-20 text-center">
-              <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-[#2f7867]/20 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-[#d05945]/10 blur-3xl" />
-              <p className="relative text-xs font-bold uppercase tracking-widest text-[#56a98f]">Everything you need</p>
-              <h2 className="relative mx-auto mt-5 max-w-2xl text-3xl font-bold tracking-[-0.03em] text-white md:text-4xl">One workspace for your entire content operation.</h2>
-              <p className="relative mx-auto mt-5 max-w-xl text-base leading-relaxed text-white/55">From the first draft to the final publish, Postelligence handles every step so you can focus on what matters — creating content your audience loves.</p>
+            <div className="relative overflow-hidden rounded-3xl border border-[#2f7867]/20 bg-gradient-to-b from-[#f0f8f5] to-[#f6f7f1] px-8 py-14 md:px-16 md:py-20 text-center">
+              <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-[#2f7867]/10 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-[#d05945]/5 blur-3xl" />
+              <p className="relative text-xs font-bold uppercase tracking-widest text-[#2f7867]">Everything you need</p>
+              <h2 className="relative mx-auto mt-5 max-w-2xl text-3xl font-bold tracking-[-0.03em] text-[#1f2528] md:text-4xl">One workspace for your entire content operation.</h2>
+              <p className="relative mx-auto mt-5 max-w-xl text-base leading-relaxed text-[#4f5b62]">From the first draft to the final publish, Postelligence handles every step so you can focus on what matters — creating content your audience loves.</p>
               <div className="relative mt-10 flex flex-wrap items-center justify-center gap-4">
                 <Link href="/login" className="marketing-cta-primary">Try Postelligence free<ArrowRight className="h-4 w-4" /></Link>
-                <Link href="/platforms" className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/15 transition-colors">View integrations</Link>
+                <Link href="/platforms" className="inline-flex items-center gap-2 rounded-full border border-[#1f2528]/15 bg-white px-6 py-3 text-sm font-semibold text-[#1f2528] hover:bg-slate-50 transition-colors">View integrations</Link>
               </div>
             </div>
           </Reveal>

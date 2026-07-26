@@ -1,4 +1,4 @@
-# Postelligence Marketing Landing Page documentation
+# 13_ Postelligence Marketing Landing Page documentation
 
 This document provides a comprehensive technical and design breakdown of the **Postelligence Marketing Landing Page** (`app/(marketing)/page.tsx`), detailing its visual design system, structure, components, animations, and SEO setups.
 

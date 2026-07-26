@@ -176,10 +176,70 @@ async function processPost(post: any): Promise<{ id: string; status: string }> {
     }
   }
 
-  return { id: post.id, status: finalStatus };
+const GEMINI_MODEL_CASCADE = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite-preview-02-05",
+  "gemini-2.0-flash-lite",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+  "gemini-1.5-pro"
+];
+
+async function generateWithGeminiCascadeEdge(prompt: string): Promise<string> {
+  const keys: string[] = [];
+  const key0 = Deno.env.get("GEMINI_API_KEY");
+  if (key0) keys.push(key0);
+
+  const keysCsv = Deno.env.get("GEMINI_API_KEYS");
+  if (keysCsv) {
+    const split = keysCsv.split(",").map((k: string) => k.trim()).filter(Boolean);
+    keys.push(...split);
+  }
+
+  for (let i = 1; i <= 20; i++) {
+    const key = Deno.env.get(`GEMINI_API_KEY_${i}`);
+    if (key && !keys.includes(key)) {
+      keys.push(key);
+    }
+  }
+
+  const uniqueKeys = Array.from(new Set(keys));
+  if (uniqueKeys.length === 0) {
+    throw new Error("No GEMINI_API_KEY set");
+  }
+
+  let lastErr: Error | null = null;
+  for (const apiKey of uniqueKeys) {
+    for (const model of GEMINI_MODEL_CASCADE) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text && typeof text === "string" && text.trim().length > 0) {
+            return text.trim();
+          }
+        } else {
+          lastErr = new Error(`Gemini status ${res.status}`);
+        }
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+      }
+    }
+  }
+  throw lastErr || new Error("All Gemini models exhausted");
 }
 
-const POLLINATIONS_TEXT_URL = "https://text.pollinations.ai/";
 const POLLINATIONS_IMAGE_URL = "https://image.pollinations.ai/prompt/";
 
 function getNextPostTime(postTimeStr: string): Date {
@@ -561,21 +621,7 @@ Requirements:
 
 Return ONLY the plain, final social media caption itself. No wrapper quotes, no markdown headers, and absolutely no additional commentary.`;
 
-  const captionRes = await fetch(POLLINATIONS_TEXT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [{ role: "user", content: systemPrompt }],
-      model: "openai",
-      temperature: 0.8,
-    }),
-  });
-
-  if (!captionRes.ok) {
-    throw new Error("Failed to generate caption");
-  }
-
-  const rawCaptionText = await captionRes.text();
+  const rawCaptionText = await generateWithGeminiCascadeEdge(systemPrompt);
   const caption = cleanCaption(rawCaptionText);
 
   // 3. Scrape Web Image or Generate Image
@@ -1192,6 +1238,18 @@ async function publishToInstagram(post: any, account: any, mediaUrl: string, med
     }))).filter((id): id is string => Boolean(id));
 
     if (childIds.length > 1) {
+      // Wait for each child container to finish processing before creating parent CAROUSEL container
+      for (const childId of childIds) {
+        for (let i = 0; i < 10; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const statusRes = await fetch(`${base}/${childId}?${statusParamsCarousel}`);
+          const status = await statusRes.json() as any;
+          if (status.status_code === "FINISHED") break;
+          if (status.status_code === "ERROR") throw new Error(`Instagram media processing failed: ${status.status || "unknown"}`);
+          if (i === 9) throw new Error("Instagram media did not finish processing in time.");
+        }
+      }
+
       const carouselParams = new URLSearchParams({ access_token: token, media_type: "CAROUSEL", caption: text });
       childIds.forEach((id, i) => carouselParams.set(`children[${i}]`, id));
       const container = await requireOk(
@@ -1214,6 +1272,7 @@ async function publishToInstagram(post: any, account: any, mediaUrl: string, med
     }
   }
 
+  const createParams = new URLSearchParams({ access_token: token, caption: text });
   if (mediaType === "video") {
     createParams.set("media_type", "REELS");
     createParams.set("video_url", mediaUrl);
@@ -1222,10 +1281,23 @@ async function publishToInstagram(post: any, account: any, mediaUrl: string, med
     createParams.set("image_url", mediaUrl);
   }
 
-  const container = await requireOk(
-    await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams }),
-    "Instagram container creation failed"
-  );
+  let containerFetchRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams });
+  if (!containerFetchRes.ok) {
+    const errText = await containerFetchRes.text();
+    if (mediaType === "video" && (errText.includes("2207009") || errText.includes("aspect ratio"))) {
+      console.warn("Instagram Reel share_to_feed rejected due to aspect ratio, retrying as standard Reel...");
+      createParams.delete("share_to_feed");
+      containerFetchRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams });
+    }
+    if (!containerFetchRes.ok) {
+      const finalErrText = await containerFetchRes.text().catch(() => errText);
+      if (finalErrText.includes("2207009") || finalErrText.includes("aspect ratio")) {
+        throw new Error("Instagram image aspect ratio is not supported (error 2207009). Instagram requires feed images to be between 4:5 (0.8) and 1.91:1 aspect ratio. Please crop your image.");
+      }
+      throw new Error(`Instagram container creation failed: ${finalErrText}`);
+    }
+  }
+  const container = await containerFetchRes.json() as any;
 
   const publishParams = new URLSearchParams({ access_token: token, creation_id: container.id });
   const statusParams = new URLSearchParams({ access_token: token, fields: "status_code,status" });
@@ -1344,6 +1416,18 @@ async function publishToThreads(post: any, account: any, mediaUrl: string, media
     }))).filter((id): id is string => Boolean(id));
 
     if (childIds.length > 1) {
+      // Wait for each child container to finish processing before creating parent CAROUSEL container
+      for (const childId of childIds) {
+        for (let i = 0; i < 10; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const statusRes = await fetch(`https://graph.threads.net/${childId}?${statusParams}`);
+          const status = await statusRes.json() as any;
+          if (status.status === "FINISHED") break;
+          if (status.status === "ERROR") throw new Error(`Threads media processing failed: ${status.error_message || "unknown"}`);
+          if (i === 9) throw new Error("Threads media did not finish processing in time.");
+        }
+      }
+
       const carouselParams = new URLSearchParams({
         access_token: token,
         media_type: "CAROUSEL",

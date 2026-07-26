@@ -1,4 +1,4 @@
-# AI Studio Trends Analyzer Documentation
+# 7_ AI Studio Trends Analyzer Documentation
 
 This document outlines the technical architecture, data structures, backend api endpoints, and frontend user interface of the **Trends Analyzer** feature in the Postelligence AI Studio (`app/(shell)/ai-studio/`).
 

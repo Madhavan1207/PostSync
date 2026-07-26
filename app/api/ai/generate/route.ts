@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { parseJsonBody } from "@/lib/validation/http";
+import { generateWithGeminiCascade } from "@/lib/gemini";
 
 export const maxDuration = 60; // Allow up to 60 seconds execution time to prevent timeouts
-
-const POLLINATIONS_TEXT_URL = "https://text.pollinations.ai/";
 
 export type AIGenerateMode =
   | "caption"
@@ -309,7 +308,7 @@ function extractCleanText(text: string): string {
       if (parsed.content) return parsed.content;
       if (parsed.choices?.[0]?.message?.content) return parsed.choices[0].message.content;
       if (parsed.result) return parsed.result;
-    } catch (e) {}
+    } catch {}
 
     const captionRegex = /"caption"\s*:\s*\\?"([^"]+)\\?"/i;
     let match = cleaned.match(captionRegex);
@@ -369,7 +368,8 @@ export async function POST(req: NextRequest) {
     const body: AIGenerateRequest = parsed.data;
     const { mode } = body;
 
-    const apiKey = process.env.POLLINATIONS_API_KEY;
+    // `mode` is already validated as a required enum by AIGenerateBody above,
+    // so main's manual `if (!mode)` guard is redundant and has been dropped.
     let prompt = "";
 
     if (mode === "trends-list") {
@@ -473,10 +473,10 @@ export async function POST(req: NextRequest) {
                     const uniqueTrends = filteredTrends.filter((v, i, a) => a.indexOf(v) === i);
                     return uniqueTrends.slice(0, 2).join(". ");
                   }
-                } catch (e) {
-                  console.error("Failed to parse description snippet:", e);
+                } catch {
+                  console.error("Failed to parse description snippet");
                 }
-                return `Latest updates and reports regarding: ${mainTitle}.`;
+                return defaultSnippet || `Latest updates and reports regarding: ${mainTitle}.`;
               };
 
               const parsedDescription = getSnippet(descRaw, newsTitles, cleanTitle, "No additional description available.");
@@ -530,29 +530,15 @@ Return ONLY a valid JSON array of ${headlines.length} strings (the explanations)
             const cacheBuster = `\n\n[Request ID: ${Date.now()}-${Math.random().toString(36).substring(2)}]`;
             const finalPrompt = prompt + cacheBuster;
 
-            const res = await fetch(POLLINATIONS_TEXT_URL, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-              },
-              body: JSON.stringify({
-                messages: [
-                  { role: "system", content: "You are a concise helper that outputs raw JSON arrays of strings. No markdown, no backticks, no explanations." },
-                  { role: "user", content: finalPrompt }
-                ],
-                model: "openai-fast",
-                temperature: 0.2
-              })
-            });
+            const text = await generateWithGeminiCascade(
+              finalPrompt,
+              "You are a concise helper that outputs raw JSON arrays of strings. No markdown, no backticks, no explanations."
+            );
 
-            if (res.ok) {
-              const text = await res.text();
-              const cleanText = text.trim().replace(/^```json|```$/g, "").trim();
-              const array = JSON.parse(cleanText);
-              if (Array.isArray(array) && array.length === topTrends.length) {
-                llmDescriptions = array.map(item => String(item).trim());
-              }
+            const cleanText = text.trim().replace(/^```json|```$/g, "").trim();
+            const array = JSON.parse(cleanText);
+            if (Array.isArray(array) && array.length === topTrends.length) {
+              llmDescriptions = array.map(item => String(item).trim());
             }
           } catch (llmErr) {
             console.error("Batch description generation failed, falling back to RSS headlines:", llmErr);
@@ -619,30 +605,7 @@ Return ONLY a valid JSON array of ${headlines.length} strings (the explanations)
 
     const finalPrompt = `${prompt}\n\n[Request ID: ${Date.now()}-${Math.random().toString(36).substring(2)}]`;
 
-    const res = await fetch(POLLINATIONS_TEXT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: finalPrompt }],
-        model: "openai",
-        temperature: 0.85,
-        max_tokens: 1500
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "Unknown error");
-      console.error("Pollinations AI error:", errText);
-      return NextResponse.json(
-        { error: errText || "Pollinations AI request failed" },
-        { status: res.status }
-      );
-    }
-
-    const text = await res.text();
+    const text = await generateWithGeminiCascade(finalPrompt);
 
     if (!text) {
       return NextResponse.json({ error: "No content generated" }, { status: 500 });

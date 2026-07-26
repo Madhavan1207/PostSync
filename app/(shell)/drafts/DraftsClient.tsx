@@ -88,16 +88,29 @@ export default function DraftsClient({
     router.push(`/create?draftId=${draft.id}`);
   };
 
+  const getLocalDateString = (d: Date = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const openSchedule = (draft: Draft) => {
     setScheduleModal(draft);
     setSchedulePlatforms(draft.platforms.filter((p) => AVAILABLE.includes(p)));
     const now = new Date(); now.setMinutes(now.getMinutes() + 30);
-    setScheduleDate(now.toISOString().split("T")[0]);
+    setScheduleDate(getLocalDateString(now));
     setScheduleTime(now.toTimeString().slice(0, 5));
   };
 
   const confirmSchedule = async () => {
     if (!scheduleModal) return;
+    const hasMediaPlatform = schedulePlatforms.some((p) => ["instagram", "youtube", "pinterest"].includes(p.toLowerCase()));
+    const mediaList = scheduleModal.media_urls || [];
+    if (hasMediaPlatform && mediaList.length === 0) {
+      showToast("Instagram, YouTube, and Pinterest require media. Please edit the draft to attach a file before scheduling.", "error");
+      return;
+    }
     setScheduling(true);
     try {
       const scheduled_time = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
@@ -109,13 +122,17 @@ export default function DraftsClient({
           media_urls: scheduleModal.media_urls, platforms: schedulePlatforms, scheduled_time,
         }),
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to schedule post.");
       await fetch(`/api/drafts/${scheduleModal.id}`, { method: "DELETE" });
       setDrafts((p) => p.filter((d) => d.id !== scheduleModal.id));
       setScheduleModal(null);
       showToast("Post scheduled! View it in Calendar.");
-    } catch { showToast("Failed to schedule post.", "error"); }
-    finally { setScheduling(false); }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to schedule post.", "error");
+    } finally {
+      setScheduling(false);
+    }
   };
 
   const publishNow = async (draft: Draft) => {
@@ -334,7 +351,7 @@ export default function DraftsClient({
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Date</label>
                   <input type="date" className="w-full rounded-lg border border-[#1f2528]/12 bg-[#f9faf7] px-4 py-2.5 text-sm text-[#1f2528] outline-none focus:border-[#2f7867]/50 focus:bg-white"
-                    value={scheduleDate} min={new Date().toISOString().split("T")[0]} onChange={(e) => setScheduleDate(e.target.value)} />
+                    value={scheduleDate} min={getLocalDateString()} onChange={(e) => setScheduleDate(e.target.value)} />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Time</label>
@@ -344,12 +361,17 @@ export default function DraftsClient({
                 <div>
                   <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Platforms</label>
                   <div className="flex flex-wrap gap-2">
-                    {AVAILABLE.map((p) => (
-                      <button key={p} onClick={() => setSchedulePlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])}
-                        className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition ${schedulePlatforms.includes(p) ? "bg-[#1f2528] text-white" : "border border-[#1f2528]/12 bg-white text-slate-600"}`}>
-                        {schedulePlatforms.includes(p) && <Check className="h-3 w-3" />}{p}
-                      </button>
-                    ))}
+                    {AVAILABLE.map((p) => {
+                      const isSelected = schedulePlatforms.includes(p);
+                      const isThreads = p.toLowerCase() === "threads";
+                      return (
+                        <button key={p} onClick={() => setSchedulePlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])}
+                          className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition ${isSelected ? (isThreads ? "bg-black text-white border-black" : "bg-[#1f2528] text-white") : "border border-[#1f2528]/12 bg-white text-slate-600"}`}>
+                          {isSelected && <Check className="h-3 w-3 text-white" />}
+                          <span className={isSelected ? "text-white" : ""}>{p}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

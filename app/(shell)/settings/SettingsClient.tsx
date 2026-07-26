@@ -283,164 +283,306 @@ export default function SettingsClient({ initialDefaultPlatforms, initialUser }:
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-black tracking-[-0.03em] text-[#1f2528]">Settings</h1>
-        <p className="mt-1 text-sm text-slate-500">Manage your profile and platform preferences</p>
+    <div className="mx-auto max-w-7xl w-full space-y-8 pb-12">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1f2528]/10 pb-5">
+        <div>
+          <h1 className="text-3xl font-black tracking-[-0.04em] text-[#1f2528]">Settings & Account Preferences</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">Customize your creator profile, identity, default publishing platforms, and security.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#2f7867]/30 bg-[#eaf7ef] px-3.5 py-1.5 text-xs font-black text-[#2f7867]">
+            <span className="h-2 w-2 rounded-full bg-[#2f7867] animate-pulse" /> Creator Active
+          </span>
+        </div>
       </div>
 
-      {/* Profile Details Card */}
-      <div className="rounded-lg border border-[#1f2528]/10 bg-white p-6 shadow-[0_8px_32px_rgba(31,37,40,0.08)]">
-        <div className="mb-1 text-sm font-black text-[#1f2528]">Profile Details</div>
-        <p className="mb-4 text-xs text-slate-400">
-          Update your creator credentials, name, and profile avatar.
-        </p>
-
-        <div className="space-y-5">
-          {/* Avatar Area */}
-          <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="relative shrink-0">
-              {avatarUrl && !avatarLoadError ? (
-                <img
-                  src={avatarUrl}
-                  alt={fullName}
-                  className="h-24 w-24 rounded-full object-cover border border-[#1f2528]/12 shadow-sm"
-                  onError={() => setFailedAvatarUrl(avatarUrl)}
-                />
-              ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#2f7867]/10 text-2xl font-bold text-[#2f7867] border border-[#2f7867]/20">
-                  {(fullName || "CR").slice(0, 2).toUpperCase()}
-                </div>
-              )}
-              <input
-                ref={avatarInputRef}
-                type="file"
-                className="hidden"
-                accept="image/*"
-                onChange={onFileChange}
-              />
-            </div>
+      {/* 2-Column Responsive Layout Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        {/* Left Sidebar / Creator Identity Card (4 columns on lg screens) */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="rounded-2xl border border-[#1f2528]/10 bg-white p-6 shadow-[0_8px_32px_rgba(31,37,40,0.06)] relative overflow-hidden">
+            <div className="absolute top-0 right-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-gradient-to-br from-[#2f7867]/10 to-transparent blur-xl pointer-events-none" />
             
-            <div className="flex-1 flex flex-col gap-3 w-full text-left">
+            <div className="flex flex-col items-center text-center">
+              {/* Avatar */}
+              <div className="relative group">
+                {avatarUrl && !avatarLoadError ? (
+                  <img
+                    src={avatarUrl}
+                    alt={fullName}
+                    className="h-28 w-28 rounded-full object-cover border-4 border-white shadow-md ring-1 ring-slate-200"
+                    onError={() => setFailedAvatarUrl(avatarUrl)}
+                  />
+                ) : (
+                  <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-[#2f7867] to-[#1f4a3f] text-3xl font-black text-white shadow-md ring-4 ring-white">
+                    {(fullName || "CR").slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-[#1f2528] text-white shadow-lg hover:scale-110 transition-transform cursor-pointer"
+                  title="Change Avatar"
+                >
+                  <Upload className="h-4 w-4" />
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  onChange={onFileChange}
+                />
+              </div>
+
+              <h2 className="mt-4 text-xl font-black text-[#1f2528]">{fullName || "Creator Account"}</h2>
+              <p className="text-xs font-semibold text-slate-400 truncate max-w-full">{initialUser?.email}</p>
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+                <span className="rounded-full bg-[#f4f9f7] border border-[#2f7867]/30 px-3 py-1 text-[11px] font-bold text-[#2f7867]">
+                  Creator Tier
+                </span>
+                <span className="rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  {defaultPlatforms.length} Default Channels
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-slate-100 pt-5 space-y-3">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-medium">Primary Email</span>
+                <span className="font-bold text-[#1f2528] truncate max-w-[170px]">{initialUser?.email}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-medium">Phone Contact</span>
+                <span className="font-bold text-[#1f2528]">{countryCode} {phone || "Not set"}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-medium">Auth Provider</span>
+                <span className="font-bold text-[#2f7867] capitalize">{initialUser?.app_metadata?.provider || "Email"}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Tips Card */}
+          <div className="rounded-2xl border border-[#2f7867]/20 bg-[#f4f9f7] p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <Check className="h-4 w-4 text-[#2f7867]" />
+              <span className="text-xs font-black uppercase tracking-wider text-[#2f7867]">Workflow Optimization</span>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-600 font-medium">
+              Selecting default channels ensures your primary social platforms are pre-loaded each time you create a post.
+            </p>
+          </div>
+        </div>
+
+        {/* Right Column / Main Cards (8 columns on lg screens) */}
+        <div className="lg:col-span-8 space-y-8">
+          
+          {/* Profile Details Form Card */}
+          <div className="rounded-2xl border border-[#1f2528]/10 bg-white p-6 shadow-[0_8px_32px_rgba(31,37,40,0.06)]">
+            <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
-                <span className="text-xs font-bold text-slate-500">Select Default Avatar</span>
-                {/* Horizontal row of default avatars */}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {defaultAvatars.map((av) => {
-                    const isSelected = avatarUrl === av.url;
-                    return (
-                      <DefaultAvatarItem
-                        key={av.id}
-                        av={av}
-                        isSelected={isSelected}
-                        onClick={() => setAvatarUrl(av.url)}
-                      />
-                    );
-                  })}
+                <h2 className="text-lg font-black text-[#1f2528]">Profile & Creator Credentials</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Update your display name, contact phone, and profile avatar.</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              {/* Avatar Selector */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Select Default Avatar Presets
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  {defaultAvatars.map((av) => (
+                    <DefaultAvatarItem
+                      key={av.id}
+                      av={av}
+                      isSelected={avatarUrl === av.url}
+                      onClick={() => setAvatarUrl(av.url)}
+                    />
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs font-bold"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    Upload Custom Avatar
+                  </Button>
+                  {avatarUrl && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs font-bold border-rose-200 text-rose-600 hover:bg-rose-50"
+                      onClick={() => setAvatarUrl("")}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Reset to Default
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              {/* Action Buttons: Upload & Reset */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button
-                  variant="secondary"
-                  className="h-9.5 text-xs font-bold"
-                  onClick={() => avatarInputRef.current?.click()}
-                  disabled={uploading}
-                >
-                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  Upload Custom
+              {/* Inputs Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-[#1f2528]">Full Name</label>
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full rounded-xl border border-[#1f2528]/12 bg-[#f9faf7] px-4 py-2.5 text-sm font-semibold text-[#1f2528] outline-none focus:border-[#2f7867] focus:bg-white transition-colors"
+                    placeholder="Your full name"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold text-[#1f2528]">Phone Number</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={countryCode}
+                      onChange={(e) => {
+                        const newCode = e.target.value;
+                        setCountryCode(newCode);
+                        const selectedCountry = COUNTRIES.find((c) => c.code === newCode);
+                        if (selectedCountry) {
+                          setPhone((prev: string) => prev.replace(/\D/g, "").slice(0, selectedCountry.digits));
+                        }
+                      }}
+                      className="rounded-xl border border-[#1f2528]/12 bg-[#f9faf7] px-3 py-2.5 text-xs font-bold text-[#1f2528] outline-none focus:border-[#2f7867]"
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>{c.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={phone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        const selectedCountry = COUNTRIES.find((c) => c.code === countryCode);
+                        const limit = selectedCountry ? selectedCountry.digits : 15;
+                        setPhone(val.slice(0, limit));
+                      }}
+                      className="min-w-0 flex-1 rounded-xl border border-[#1f2528]/12 bg-[#f9faf7] px-4 py-2.5 text-sm font-semibold text-[#1f2528] outline-none focus:border-[#2f7867] focus:bg-white transition-colors"
+                      placeholder="Phone number"
+                    />
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-bold text-slate-400">Primary Email Address (Read-only)</label>
+                  <input
+                    type="text"
+                    value={initialUser?.email || ""}
+                    disabled
+                    className="w-full rounded-xl border border-[#1f2528]/10 bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-500 cursor-not-allowed outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <Button variant="primary" disabled={savingProfile} onClick={saveProfile} className="px-6 py-2.5">
+                  {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {savingProfile ? "Saving Profile..." : "Save Profile"}
                 </Button>
-                {avatarUrl && (
-                  <Button
-                    variant="outline"
-                    className="h-9.5 text-xs font-bold border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 cursor-pointer"
-                    onClick={() => setAvatarUrl("")}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    Reset to Default
-                  </Button>
+                {profileSaved && (
+                  <span className="flex items-center gap-1.5 text-sm font-bold text-[#2f7867]">
+                    <Check className="h-4 w-4" /> Profile saved!
+                  </span>
                 )}
+                {profileError && <span className="text-sm font-bold text-rose-500">{profileError}</span>}
               </div>
             </div>
           </div>
 
-          {/* Full Name */}
-          <div className="flex flex-col gap-1.5 text-left">
-            <label className="text-xs font-bold text-slate-500">Full Name</label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="rounded-lg border border-[#1f2528]/10 bg-slate-50 px-3 py-2.5 text-xs text-[#1f2528] focus:border-[#2f7867] focus:outline-none font-semibold"
-              placeholder="Your full name"
-            />
-          </div>
+          {/* Default Publishing Channels Card */}
+          <div className="rounded-2xl border border-[#1f2528]/10 bg-white p-6 shadow-[0_8px_32px_rgba(31,37,40,0.06)]">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-black text-[#1f2528]">Default Publishing Channels</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Select which social platforms are pre-selected every time you open Create.</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDefaultPlatforms(ALL_PLATFORMS.map((p) => p.id))}
+                  className="text-xs font-bold text-[#2f7867] hover:underline"
+                >
+                  Select All
+                </button>
+                <span className="text-slate-300">•</span>
+                <button
+                  type="button"
+                  onClick={() => setDefaultPlatforms([])}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-600 hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
 
-          {/* Phone Number */}
-          <div className="flex flex-col gap-1.5 text-left">
-            <label className="text-xs font-bold text-slate-500">Phone Number</label>
-            <div className="flex gap-2">
-              <select
-                value={countryCode}
-                onChange={(e) => {
-                  const newCode = e.target.value;
-                  setCountryCode(newCode);
-                  const selectedCountry = COUNTRIES.find((c) => c.code === newCode);
-                  if (selectedCountry) {
-                    setPhone((prev: string) => prev.replace(/\D/g, "").slice(0, selectedCountry.digits));
-                  }
-                }}
-                className="rounded-lg border border-[#1f2528]/10 bg-slate-50 px-2.5 py-2.5 text-xs text-[#1f2528] focus:border-[#2f7867] focus:outline-none font-semibold cursor-pointer"
-              >
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, "");
-                  const selectedCountry = COUNTRIES.find((c) => c.code === countryCode);
-                  const limit = selectedCountry ? selectedCountry.digits : 15;
-                  setPhone(val.slice(0, limit));
-                }}
-                className="flex-1 rounded-lg border border-[#1f2528]/10 bg-slate-50 px-3 py-2.5 text-xs text-[#1f2528] focus:border-[#2f7867] focus:outline-none font-semibold"
-                placeholder="Phone number..."
-              />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {ALL_PLATFORMS.map((p) => {
+                const selected = defaultPlatforms.includes(p.id);
+                const isThreads = p.id === "threads";
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => toggle(p.id)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl border px-4 py-3 text-xs font-black transition-all shadow-sm cursor-pointer text-left",
+                      selected
+                        ? isThreads
+                          ? "bg-slate-950 text-white border-slate-950"
+                          : "text-white border-transparent"
+                        : "border-slate-200/80 bg-[#f9faf7] text-slate-600 hover:bg-[#f2f4ef]"
+                    )}
+                    style={selected && !isThreads ? { backgroundColor: p.color, borderColor: p.color } : undefined}
+                  >
+                    <span className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border shadow-sm", selected && isThreads ? "bg-white text-slate-950" : "bg-white")} style={{ color: selected && isThreads ? "#000000" : p.color }}>
+                      <span className="text-[10px] font-black">{p.label.slice(0, 2).toUpperCase()}</span>
+                    </span>
+                    <span className="truncate flex-1">{p.label}</span>
+                    {selected && <Check className="h-3.5 w-3.5 shrink-0 text-white" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {defaultPlatforms.length === 0 && (
+              <p className="mt-3 text-xs text-amber-500">
+                No default channels selected — the Create page will start with no platforms pre-selected.
+              </p>
+            )}
+
+            <div className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-4">
+              <Button variant="primary" disabled={saving} onClick={saveDefaultPlatforms} className="px-6 py-2.5">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {saving ? "Saving..." : "Save Preferences"}
+              </Button>
+              {saved && (
+                <span className="flex items-center gap-1.5 text-sm font-bold text-[#2f7867]">
+                  <Check className="h-4 w-4" /> Preferences saved!
+                </span>
+              )}
+              {error && <span className="text-sm font-bold text-rose-500">{error}</span>}
             </div>
           </div>
 
-          {/* Email (Read Only) */}
-          <div className="flex flex-col gap-1.5 text-left">
-            <label className="text-xs font-bold text-slate-500">Email Address (Primary)</label>
-            <input
-              type="text"
-              value={initialUser?.email || ""}
-              disabled
-              className="rounded-lg border border-[#1f2528]/10 bg-slate-100 px-3 py-2.5 text-xs text-slate-400 cursor-not-allowed outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center gap-3">
-          <Button variant="primary" disabled={savingProfile} onClick={saveProfile}>
-            {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {savingProfile ? "Saving Profile..." : "Save Profile"}
-          </Button>
-          {profileSaved && (
-            <span className="flex items-center gap-1.5 text-sm font-bold text-[#2f7867]">
-              <Check className="h-4 w-4" /> Profile saved!
-            </span>
-          )}
-          {profileError && <span className="text-sm font-bold text-rose-500">{profileError}</span>}
         </div>
       </div>
 
-      {/* ── CUSTOM CANVAS IMAGE CROPPER MODAL ── */}
+      {/* Custom Avatar Cropper Modal */}
       <AnimatePresence>
         {imageSrc && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -511,55 +653,6 @@ export default function SettingsClient({ initialDefaultPlatforms, initialUser }:
           </div>
         )}
       </AnimatePresence>
-
-      {/* Default Channels Card */}
-      <div className="rounded-lg border border-[#1f2528]/10 bg-white p-6 shadow-[0_8px_32px_rgba(31,37,40,0.08)]">
-        <div className="mb-1 text-sm font-black text-[#1f2528]">Default channels</div>
-        <p className="mb-4 text-xs text-slate-400">
-          These platforms will be pre-selected every time you open the Create page.
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {ALL_PLATFORMS.map((p) => {
-            const selected = defaultPlatforms.includes(p.id);
-            return (
-              <button
-                key={p.id}
-                onClick={() => toggle(p.id)}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-bold transition",
-                  selected
-                    ? "border-transparent text-white"
-                    : "border-[#1f2528]/10 bg-[#f9faf7] text-slate-500 hover:bg-[#f2f4ef] hover:text-[#1f2528]"
-                )}
-                style={selected ? { backgroundColor: p.color, borderColor: p.color } : undefined}
-              >
-                {selected && <Check className="h-3.5 w-3.5" />}
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {defaultPlatforms.length === 0 && (
-          <p className="mt-3 text-xs text-amber-500">
-            No default channels selected — the Create page will start with no platforms pre-selected.
-          </p>
-        )}
-
-        <div className="mt-6 flex items-center gap-3">
-          <Button variant="primary" disabled={saving} onClick={saveDefaultPlatforms}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? "Saving..." : "Save Preferences"}
-          </Button>
-          {saved && (
-            <span className="flex items-center gap-1.5 text-sm font-bold text-[#2f7867]">
-              <Check className="h-4 w-4" /> Preferences saved!
-            </span>
-          )}
-          {error && <span className="text-sm font-bold text-rose-500">{error}</span>}
-        </div>
-      </div>
     </div>
   );
 }

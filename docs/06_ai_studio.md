@@ -1,4 +1,4 @@
-# AI Studio — Developer Guide
+# 6_ AI Studio — Developer Guide
 
 ## What is AI Studio?
 

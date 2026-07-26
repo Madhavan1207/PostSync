@@ -155,10 +155,17 @@ export default function WorkspaceDraftDetailClient({
     }
   };
 
+  const getLocalDateString = (d: Date = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   // ── Schedule / Reschedule modal open+submit ─────────────────
   const openScheduleModal = (mode: "schedule" | "reschedule") => {
     const base = mode === "reschedule" && draft.scheduled_time ? new Date(draft.scheduled_time) : new Date(Date.now() + 30 * 60000);
-    setScheduleDate(base.toISOString().split("T")[0]);
+    setScheduleDate(getLocalDateString(base));
     setScheduleTime(base.toTimeString().slice(0, 5));
     setScheduleModal(mode);
   };
@@ -469,7 +476,7 @@ export default function WorkspaceDraftDetailClient({
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-400">Date</label>
                   <input type="date" className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none focus:border-gray-400 focus:bg-white"
-                    value={scheduleDate} min={new Date().toISOString().split("T")[0]} onChange={(e) => setScheduleDate(e.target.value)} />
+                    value={scheduleDate} min={getLocalDateString()} onChange={(e) => setScheduleDate(e.target.value)} />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-400">Time</label>

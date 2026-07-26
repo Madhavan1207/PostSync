@@ -21,7 +21,7 @@ const milestones = [
 export default function AboutPage() {
   return (
     <PageTransition>
-      <section className="relative overflow-hidden px-5 pb-16 pt-20 md:px-8 md:pb-24 md:pt-28">
+      <section className="relative overflow-hidden px-5 pb-16 pt-[100px] md:px-8 md:pb-24 md:pt-[104px]">
         <div className="pointer-events-none absolute inset-0 -z-10">
           <div className="absolute -top-32 -left-32 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-[#2f7867]/10 to-transparent blur-3xl" />
           <div className="absolute bottom-0 right-0 h-[500px] w-[500px] rounded-full bg-gradient-to-tl from-[#d05945]/8 to-transparent blur-3xl" />
@@ -45,17 +45,17 @@ export default function AboutPage() {
       <section className="px-5 pb-16 md:px-8">
         <div className="mx-auto max-w-5xl">
           <Reveal>
-            <div className="relative overflow-hidden rounded-3xl border border-[#1f2528]/8 bg-gradient-to-br from-[#1f2528] to-[#2d3a40] px-8 py-14 md:px-16 md:py-20">
-              <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-[#2f7867]/20 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-10 -left-10 h-60 w-60 rounded-full bg-[#d05945]/10 blur-3xl" />
+            <div className="relative overflow-hidden rounded-3xl border border-[#2f7867]/20 bg-gradient-to-b from-[#f0f8f5] to-[#f6f7f1] px-8 py-14 md:px-16 md:py-20">
+              <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-[#2f7867]/10 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-10 -left-10 h-60 w-60 rounded-full bg-[#d05945]/5 blur-3xl" />
               <Quote className="relative mb-6 h-10 w-10 text-[#2f7867]" />
-              <blockquote className="relative text-2xl font-semibold leading-snug tracking-[-0.03em] text-white md:text-4xl max-w-3xl">
+              <blockquote className="relative text-2xl font-semibold leading-snug tracking-[-0.03em] text-[#1f2528] md:text-4xl max-w-3xl">
                 Create once, publish everywhere — and never lose your voice in the process.
               </blockquote>
-              <p className="relative mt-8 max-w-2xl text-base leading-relaxed text-white/55">
+              <p className="relative mt-8 max-w-2xl text-base leading-relaxed text-[#4f5b62]">
                 Every feature we ship is measured against one question: does this help creators show up more consistently, with less effort, and more authenticity? If the answer is no, it does not ship.
               </p>
-              <p className="relative mt-6 text-sm font-bold uppercase tracking-widest text-[#56a98f]">Our mission</p>
+              <p className="relative mt-6 text-sm font-bold uppercase tracking-widest text-[#2f7867]">Our mission</p>
             </div>
           </Reveal>
         </div>

@@ -24,7 +24,7 @@ const stats = [
 export default function ChangelogPage() {
   return (
     <PageTransition>
-      <section className="relative overflow-hidden px-5 pb-16 pt-20 md:px-8 md:pb-24 md:pt-28">
+      <section className="relative overflow-hidden px-5 pb-16 pt-[100px] md:px-8 md:pb-24 md:pt-[104px]">
         <div className="pointer-events-none absolute inset-0 -z-10">
           <div className="absolute -top-32 -left-32 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-[#2f7867]/10 to-transparent blur-3xl" />
           <div className="absolute top-0 right-0 h-[400px] w-[400px] rounded-full bg-gradient-to-bl from-[#d05945]/8 to-transparent blur-3xl" />

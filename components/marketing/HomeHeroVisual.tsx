@@ -70,10 +70,10 @@ function PinterestLogo() {
   );
 }
 
-function RedditLogo() {
+function DiscordLogo() {
   return (
-    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="#FF4500">
-      <path d="M24 11.5c0-1.654-1.346-3-3-3-.964 0-1.817.458-2.36 1.16-1.625-1.122-3.826-1.822-6.242-1.9l1.322-4.148 4.31.916c.038.847.74 1.522 1.597 1.522 1.02 0 1.848-.828 1.848-1.848s-.828-1.848-1.848-1.848c-.89 0-1.626.634-1.796 1.48L12.44 2.82a.75.75 0 0 0-.904.512L10.05 7.6C7.59 7.663 5.347 8.37 3.694 9.508 3.155 8.796 2.28 8.333 1.25 8.333c-1.654 0-3 1.346-3 3 0 1.22.735 2.27 1.787 2.723-.058.26-.087.525-.087.79 0 3.738 4.544 6.786 10.15 6.786s10.15-3.048 10.15-6.786c0-.265-.03-.53-.088-.79 1.052-.453 1.788-1.503 1.788-2.723zm-16.5 2c-.828 0-1.5-.672-1.5-1.5s.672-1.5 1.5-1.5 1.5.672 1.5 1.5-.672 1.5-1.5 1.5zm10 0c-.828 0-1.5-.672-1.5-1.5s.672-1.5 1.5-1.5 1.5.672 1.5 1.5-.672 1.5-1.5 1.5z" />
+    <svg viewBox="0 0 127.14 96.36" className="h-8 w-8" fill="#5865F2">
+      <path d="M107.7,8.07A105.15,105.15,0,0,0,77.26,0a77.19,77.19,0,0,0-3.3,6.83A96.67,96.67,0,0,0,53.22,6.83,77.19,77.19,0,0,0,49.88,0,105.15,105.15,0,0,0,19.44,8.07C3.66,31.58-1.86,54.65,1,77.53A105.73,105.73,0,0,0,32,96.36a77.7,77.7,0,0,0,6.63-10.85,68.43,68.43,0,0,1-10.5-5c.9-.65,1.76-1.34,2.58-2a75.58,75.58,0,0,0,72.77,0c.82.71,1.68,1.4,2.58,2a68.43,68.43,0,0,1-10.5,5,77.7,77.7,0,0,0,6.63,10.85,105.73,105.73,0,0,0,31.56-18.83C129.18,48.51,123.38,25.75,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53S36.18,40.36,42.45,40.36,53.83,46,53.83,53,48.72,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.24,60,73.24,53S78.41,40.36,84.69,40.36,96.07,46,96.07,53,91,65.69,84.69,65.69Z" />
     </svg>
   );
 }
@@ -95,12 +95,12 @@ export function HomeHeroVisual() {
     { name: "Facebook", color: "#1877F2", bg: "#e7f3ff", initialAngle: 160, logo: FacebookLogo },
     { name: "Bluesky", color: "#0085ff", bg: "#e7f3fb", initialAngle: 200, logo: BlueskyLogo },
     { name: "Pinterest", color: "#BD081C", bg: "#fbe9ee", initialAngle: 240, logo: PinterestLogo },
-    { name: "Reddit", color: "#FF4500", bg: "#fff1e3", initialAngle: 280, logo: RedditLogo },
+    { name: "Discord", color: "#5865F2", bg: "#eef0fc", initialAngle: 280, logo: DiscordLogo },
     { name: "X", color: "#000000", bg: "#eceeec", initialAngle: 320, logo: XLogo },
   ];
 
   return (
-    <div className="relative mx-auto w-[580px] h-[580px] shrink-0 flex items-center justify-center p-8 overflow-visible select-none">
+    <div className="relative mx-auto w-[580px] h-[580px] shrink-0 flex items-center justify-center select-none transform-gpu">
       
       {/* Central Core: Postelligence BrandMark */}
       <motion.div

@@ -19,7 +19,8 @@ import {
   ExternalLink,
   Save,
   Info,
-  Calendar
+  Calendar,
+  Lock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -108,7 +109,7 @@ export default function AutomationClient({ user, initialSettings, initialLogs }:
   };
 
   // Settings states
-  const [isEnabled, setIsEnabled] = useState(initialSettings.is_enabled !== false);
+  const [isEnabled, setIsEnabled] = useState(Boolean(initialSettings.is_enabled === true));
   const [postTimes, setPostTimes] = useState<string[]>(getInitialLocalTimes());
   const [scheduleType, setScheduleType] = useState<AutomationScheduleType>(
     initialSettings.schedule_type || "daily"
@@ -567,7 +568,7 @@ export default function AutomationClient({ user, initialSettings, initialLogs }:
 
       <div className="relative mx-auto max-w-6xl px-4 py-8">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between border-b border-[#1f2528]/8 pb-6">
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1f2528]/8 pb-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#2f7867]/70">Scheduler Engine</p>
             <h1 className="mt-1 text-3xl font-black tracking-[-0.03em] text-[#1f2528]">Content Automation</h1>
@@ -577,7 +578,7 @@ export default function AutomationClient({ user, initialSettings, initialLogs }:
           </div>
 
           {/* Big ON/OFF Toggle Button */}
-          <div className="flex items-center gap-3 bg-white border border-[#1f2528]/8 px-4 py-2.5 rounded-2xl shadow-sm">
+          <div className="flex items-center justify-between sm:justify-start gap-3 bg-white border border-[#1f2528]/8 px-4 py-2.5 rounded-2xl shadow-sm w-full sm:w-auto">
             <span className={`text-[10px] font-extrabold uppercase tracking-widest ${isEnabled ? 'text-[#2f7867]' : 'text-slate-400'}`}>
               {isEnabled ? 'Automation Active' : 'Automation Paused'}
             </span>
@@ -603,7 +604,25 @@ export default function AutomationClient({ user, initialSettings, initialLogs }:
           </div>
         )}
 
-        <div className="grid gap-8 lg:grid-cols-12">
+        <div className="relative">
+          {/* Overlay Lock Banner when Content Automation is OFF */}
+          {!isEnabled && (
+            <div className="absolute inset-0 z-30 flex items-start justify-center pt-16 bg-slate-50/40 backdrop-blur-[1.5px] rounded-3xl transition-all duration-300">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/90 bg-white/95 px-6 py-4 shadow-2xl backdrop-blur-md max-w-md text-center">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 shrink-0">
+                  <Lock className="h-5 w-5" />
+                </span>
+                <div className="text-left">
+                  <p className="text-xs font-black text-[#1f2528] uppercase tracking-wide">Automation Paused</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Content Automation settings & history are visible but non-accessible. Toggle <strong className="text-[#2f7867]">&quot;AUTOMATION ACTIVE&quot;</strong> above to enable and configure.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className={`grid gap-8 lg:grid-cols-12 transition-all duration-300 ${!isEnabled ? "opacity-50 pointer-events-none select-none filter grayscale-[15%]" : ""}`}>
           {/* LEFT SIDEBAR: Automation Settings */}
           <div className="lg:col-span-5 space-y-6">
             <div className="rounded-2xl border border-[#1f2528]/10 bg-white p-6 shadow-sm">
@@ -618,7 +637,7 @@ export default function AutomationClient({ user, initialSettings, initialLogs }:
                 {/* Automation Mode */}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Publishing Mode</label>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       onClick={() => setMode("manual")}
                       className={`flex flex-col items-start rounded-xl border p-3 text-left transition-all duration-200 ${
@@ -965,7 +984,7 @@ export default function AutomationClient({ user, initialSettings, initialLogs }:
                           onClick={() => togglePlatform(p.id)}
                           className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition ${activeStyle}`}
                         >
-                          {p.name}
+                          <span className={selected ? "text-white" : ""}>{p.name}</span>
                         </button>
                       );
                     })}
@@ -1198,5 +1217,6 @@ export default function AutomationClient({ user, initialSettings, initialLogs }:
         </div>
       </div>
     </div>
+  </div>
   );
 }

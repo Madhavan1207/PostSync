@@ -37,12 +37,12 @@ export function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 px-4 pt-4 md:px-6">
+    <header className="fixed top-0 left-0 right-0 z-50 px-4 pt-4 md:px-6">
       <div
         className={`mx-auto flex max-w-6xl items-center justify-between rounded-2xl border px-4 py-3 transition-all duration-300 md:px-5 ${
           scrolled
-            ? "border-[#1f2528]/10 bg-white/85 shadow-[0_12px_40px_rgba(31,37,40,0.10)] backdrop-blur-xl"
-            : "border-transparent bg-white/40 backdrop-blur-md"
+            ? "border-[#1f2528]/8 bg-white/50 shadow-[0_12px_40px_rgba(31,37,40,0.06)] backdrop-blur-xl"
+            : "border-transparent bg-white/20 backdrop-blur-md"
         }`}
       >
         <Link href="/" className="shrink-0">
@@ -102,7 +102,7 @@ export function Navbar() {
             animate={{ opacity: 1, y: 0, height: "auto" }}
             exit={{ opacity: 0, y: -8, height: 0 }}
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="mx-auto mt-2 max-w-6xl overflow-hidden rounded-2xl border border-[#1f2528]/10 bg-white/95 p-3 shadow-[0_12px_40px_rgba(31,37,40,0.12)] backdrop-blur-xl md:hidden"
+            className="mx-auto mt-2 max-w-6xl max-h-[85dvh] overflow-y-auto rounded-2xl border border-[#1f2528]/10 bg-white/95 p-3 shadow-[0_12px_40px_rgba(31,37,40,0.12)] backdrop-blur-xl md:hidden"
           >
             <div className="flex flex-col">
               {links.map((link) => (
@@ -123,10 +123,10 @@ export function Navbar() {
               </a>
               <a
                 href="/login"
-                className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-[#1f2528] px-3 py-3 text-[0.95rem] font-semibold text-white"
+                className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-[#1f2528] px-4 py-3 text-[0.95rem] font-bold text-white shadow-md cursor-pointer transition hover:bg-[#2b353b]"
               >
-                Get started
-                <ArrowRight className="h-4 w-4" />
+                <span>Get started</span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-white" />
               </a>
             </div>
           </motion.div>

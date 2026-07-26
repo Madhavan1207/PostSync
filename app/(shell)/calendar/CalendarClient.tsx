@@ -236,10 +236,17 @@ export default function CalendarClient({ posts: initialPosts }: Props) {
     finally { setPublishingId(null); }
   };
 
+  const getLocalDateString = (d: Date = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const openEdit = (post: ScheduledPost) => {
     setEditModal(post);
     const dt = new Date(post.scheduled_time);
-    setEditDate(dt.toISOString().split("T")[0]);
+    setEditDate(getLocalDateString(dt));
     setEditTime(dt.toTimeString().slice(0, 5));
     setDetailPost(null); setDayPopup(null);
   };
@@ -614,7 +621,7 @@ const handleDayClick = (day: number, e: React.MouseEvent) => {
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">New Date</label>
                   <input type="date"
                     className="w-full rounded-xl border border-[#1f2528]/12 bg-[#f9faf7] px-4 py-3 text-sm text-[#1f2528] outline-none focus:border-[#2f7867]/50 focus:bg-white"
-                    value={editDate} min={new Date().toISOString().split("T")[0]}
+                    value={editDate} min={getLocalDateString()}
                     onChange={(e) => setEditDate(e.target.value)} />
                 </div>
                 <div>

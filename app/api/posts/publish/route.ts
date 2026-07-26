@@ -805,14 +805,15 @@ async function publishFacebook(account: StoredAccount, text: string, mediaUrl: s
   // vanish whenever media was attached. Fold it into the visible text
   // instead so it's never lost (Facebook auto-links plain URLs in text).
   const textWithLink = linkUrl ? [text.trim(), linkUrl.trim()].filter(Boolean).join("\n\n") : text;
+  const isVideo = mediaType === "video" || Boolean(mediaUrl && /\.(mp4|mov|webm|avi|m4v)(\?|$)/i.test(mediaUrl));
 
   // Video: /videos endpoint + file_url param
-  if (mediaUrl && mediaType === "video") {
+  if (mediaUrl && isVideo) {
     const params = new URLSearchParams({ access_token: token, file_url: mediaUrl });
     if (textWithLink) params.set("description", textWithLink);
     const payload = await requireOk(
       await fetch(`${base}/videos`, { method: "POST", body: params }),
-      "Facebook publish failed"
+      "Facebook video publish failed"
     );
     return payload?.id as string | undefined;
   }
@@ -905,6 +906,11 @@ async function publishThreads(account: StoredAccount, text: string, mediaUrl: st
     }))).filter((id): id is string => Boolean(id));
 
     if (childIds.length > 1) {
+      // Wait for each child container to finish processing before creating parent CAROUSEL container
+      for (const childId of childIds) {
+        await waitForThreadsContainer(childId, false);
+      }
+
       const carouselParams = new URLSearchParams({
         access_token: token,
         media_type: "CAROUSEL",
@@ -1002,7 +1008,7 @@ async function publishInstagram(account: StoredAccount, text: string, mediaUrl: 
   const userId = account.account_id;
   // Direct Instagram Login → graph.instagram.com
   // Meta/Facebook Page-linked → graph.facebook.com
-  const isDirectLogin = getMetadataString(account.metadata, "login_type") === "instagram";
+  const isDirectLogin = account.metadata?.login_type === "instagram";
   const base = isDirectLogin
     ? `https://graph.instagram.com/${graphVersion}`
     : `https://graph.facebook.com/${graphVersion}`;
@@ -1020,23 +1026,26 @@ async function publishInstagram(account: StoredAccount, text: string, mediaUrl: 
     throw new Error("Instagram media did not finish processing in time.");
   }
 
-  const imageUrls = mediaType === "image" ? mediaUrls.filter(Boolean) : [];
-
   // Carousel: 2-10 images posted together as one swipeable post.
+  const imageUrls = mediaType === "image" ? mediaUrls.filter(Boolean) : [];
   if (imageUrls.length > 1) {
     const carouselUrls = imageUrls.slice(0, 10);
     const childIds = (await Promise.all(carouselUrls.map(async (url) => {
       const params = new URLSearchParams({ access_token: token, image_url: url, is_carousel_item: "true" });
-      const child = await requireOk(
-        await fetch(`${base}/${userId}/media`, { method: "POST", body: params }),
-        "Instagram carousel item creation failed"
-      );
-      return child?.id as string | undefined;
+      const res = await fetch(`${base}/${userId}/media`, { method: "POST", body: params });
+      if (!res.ok) return undefined;
+      const child = await res.json() as { id?: string };
+      return child?.id;
     }))).filter((id): id is string => Boolean(id));
 
     if (childIds.length > 1) {
+      // Wait for each child container to finish processing before creating parent CAROUSEL container
+      for (const childId of childIds) {
+        await waitForContainer(childId);
+      }
+
       const carouselParams = new URLSearchParams({ access_token: token, media_type: "CAROUSEL", caption: text });
-      childIds.forEach((id, i) => carouselParams.set(`children[${i}]`, id));
+      childIds.forEach((id: string, i: number) => carouselParams.set(`children[${i}]`, id));
       const container = await requireOk(
         await fetch(`${base}/${userId}/media`, { method: "POST", body: carouselParams }),
         "Instagram carousel creation failed"
@@ -1063,10 +1072,23 @@ async function publishInstagram(account: StoredAccount, text: string, mediaUrl: 
     createParams.set("image_url", mediaUrl);
   }
 
-  const container = await requireOk(
-    await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams }),
-    "Instagram container creation failed"
-  );
+  let containerFetchRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams });
+  if (!containerFetchRes.ok) {
+    const errText = await containerFetchRes.text();
+    if (mediaType === "video" && (errText.includes("2207009") || errText.includes("aspect ratio"))) {
+      console.warn("Instagram Reel share_to_feed rejected due to aspect ratio, retrying as standard Reel...");
+      createParams.delete("share_to_feed");
+      containerFetchRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams });
+    }
+    if (!containerFetchRes.ok) {
+      const finalErrText = await containerFetchRes.text().catch(() => errText);
+      if (finalErrText.includes("2207009") || finalErrText.includes("aspect ratio")) {
+        throw new Error("Instagram image aspect ratio is not supported (error 2207009). Instagram requires feed images to be between 4:5 (0.8) and 1.91:1 aspect ratio. Please crop your image.");
+      }
+      throw new Error(`Instagram container creation failed: ${finalErrText}`);
+    }
+  }
+  const container = await containerFetchRes.json() as { id: string };
 
   const publishParams = new URLSearchParams({ access_token: token, creation_id: container.id });
 
@@ -1201,10 +1223,79 @@ async function publishYouTube(account: StoredAccount, text: string, title: strin
 
 // ─── Pinterest ────────────────────────────────────────────────────────────────
 
-async function publishPinterest(account: StoredAccount, text: string, mediaUrl: string, linkUrl: string) {
-  const boardId = account.metadata?.board_id || account.metadata?.default_board_id;
-  if (!boardId || typeof boardId !== "string") throw new Error("Pinterest needs a default board_id in the connected account metadata.");
-  if (!mediaUrl) throw new Error("Pinterest requires a public image URL.");
+async function getOrCreatePinterestBoardId(token: string): Promise<string> {
+  try {
+    const listRes = await fetch("https://api.pinterest.com/v5/boards?page_size=25", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (listRes.ok) {
+      const data = await listRes.json();
+      const boards = data.items || [];
+      if (boards.length > 0 && boards[0].id) {
+        return boards[0].id;
+      }
+    }
+  } catch (err) {
+    console.warn("[Pinterest] Failed to fetch boards:", err);
+  }
+
+  try {
+    const createRes = await fetch("https://api.pinterest.com/v5/boards", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: "Postelligence Pins",
+        description: "Created automatically by Postelligence for pin publishing."
+      })
+    });
+    if (createRes.ok) {
+      const data = await createRes.json();
+      if (data?.id) return data.id;
+    }
+  } catch (err) {
+    console.warn("[Pinterest] Failed to create board:", err);
+  }
+
+  throw new Error("Pinterest requires a board to publish pins. Please create a board on Pinterest first.");
+}
+
+async function publishPinterest(
+  account: StoredAccount,
+  text: string,
+  mediaUrl: string,
+  linkUrl: string,
+  mediaType: string,
+  mediaUrls: string[]
+) {
+  let boardId = (account.metadata?.board_id || account.metadata?.default_board_id) as string | undefined;
+  if (!boardId) {
+    boardId = await getOrCreatePinterestBoardId(account.access_token || "");
+  }
+  if (!mediaUrl) throw new Error("Pinterest requires a public image or video URL to create a Pin.");
+
+  const validUrls = mediaUrls.filter(Boolean);
+  let mediaSource: Record<string, unknown>;
+
+  if (mediaType === "image" && validUrls.length > 1) {
+    const carouselItems = validUrls.slice(0, 5).map((url) => ({ url }));
+    mediaSource = {
+      source_type: "multiple_image_urls",
+      items: carouselItems,
+    };
+  } else if (mediaType === "video") {
+    mediaSource = {
+      source_type: "video_url",
+      url: mediaUrl,
+    };
+  } else {
+    mediaSource = {
+      source_type: "image_url",
+      url: mediaUrl,
+    };
+  }
 
   const payload = await requireOk(
     await fetch("https://api.pinterest.com/v5/pins", {
@@ -1212,10 +1303,10 @@ async function publishPinterest(account: StoredAccount, text: string, mediaUrl: 
       headers: { Authorization: `Bearer ${account.access_token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         board_id: boardId,
-        title: text.slice(0, 100) || "Postelligence post",
-        description: text,
+        title: text.slice(0, 100) || "Postelligence Pin",
+        description: text.slice(0, 800),
         link: linkUrl || undefined,
-        media_source: { source_type: "image_url", url: mediaUrl },
+        media_source: mediaSource,
       }),
     }),
     "Pinterest publish failed"
@@ -1312,11 +1403,11 @@ async function publishDiscord(account: StoredAccount, text: string, attachment: 
   return await publishToDiscordWebhook(webhookUrl, text, mediaUrl, attachment, images);
 }
 
-async function publishTelegram(account: StoredAccount, text: string, mediaUrl: string | null) {
-  const botToken = account.access_token;
+async function publishTelegram(account: StoredAccount, text: string, mediaUrl: string | null, mediaUrls: string[]) {
+  const token = account.access_token;
   const chatId = getMetadataString(account.metadata, "chatId") || account.account_id;
-  if (!botToken || !chatId) throw new Error("Telegram bot token or Chat ID is missing.");
-  return await publishToTelegram(botToken, chatId, text, mediaUrl);
+  if (!token || !chatId) throw new Error("Telegram access token or Chat ID is missing.");
+  return await publishToTelegram(token, chatId, text, mediaUrl, mediaUrls, account.metadata || undefined);
 }
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
@@ -1348,8 +1439,8 @@ async function publishOne(
       account.platform === "youtube"   ? await publishYouTube(account, text, title, attachment, userId) :
       account.platform === "reddit"    ? await publishReddit(account, text, title, mediaUrl) :
       account.platform === "discord"   ? await publishDiscord(account, text, attachment, mediaUrl, images) :
-      account.platform === "telegram"  ? await publishTelegram(account, text, mediaUrl) :
-                                         await publishPinterest(account, text, mediaUrl, linkUrl);
+      account.platform === "telegram"  ? await publishTelegram(account, text, mediaUrl, mediaUrls) :
+                                         await publishPinterest(account, text, mediaUrl, linkUrl, mediaType, mediaUrls);
 
     // Handle graceful skip (e.g. YouTube without video)
     if (id && typeof id === "object" && "skipped" in id) {
@@ -1446,6 +1537,16 @@ export async function POST(request: Request) {
     : images.length > 0 ? "image"
     : asString(formData.get("mediaType")) || "image";
 
+  if (attachment && (mediaType === "video" || attachment.type.startsWith("video/"))) {
+    if (attachment.size > 45 * 1024 * 1024) {
+      const sizeMB = (attachment.size / (1024 * 1024)).toFixed(1);
+      return NextResponse.json(
+        { error: `Attached video file size (${sizeMB} MB) exceeds the 45 MB maximum limit. Please compress your video.` },
+        { status: 400 }
+      );
+    }
+  }
+
   if (!text && !mediaUrl && !attachment) {
     return NextResponse.json({ error: "Add post text, a media URL, or an attachment before publishing." }, { status: 400 });
   }
@@ -1538,7 +1639,8 @@ export async function POST(request: Request) {
       .insert(historyRow);
 
     if (historyError && historyError.message.includes("platform_results")) {
-      const { platform_results: _platformResults, ...legacyHistoryRow } = historyRow;
+      const legacyHistoryRow = { ...historyRow } as Record<string, unknown>;
+      delete legacyHistoryRow.platform_results;
       await supabase.from("scheduled_posts").insert(legacyHistoryRow);
     } else if (historyError) {
       console.error("[Publish] Failed to save publish history", historyError);

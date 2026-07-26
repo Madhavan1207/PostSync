@@ -27,6 +27,19 @@ This project uses Yarn as its package manager. Do not use `npm install` or `pnpm
 
 ---
 
+### 1.1 Generate Local SSL Certificates (for HTTPS mode)
+
+If you plan to test OAuth callbacks locally using `yarn dev:https`, generate the required `localhost` SSL certificates:
+
+```bash
+mkdir -p certificates
+npx mkcert -key-file ./certificates/localhost-key.pem -cert-file ./certificates/localhost.pem localhost 127.0.0.1 ::1
+```
+
+*(Note: Install `mkcert` globally via `brew install mkcert` or `choco install mkcert` if needed).*
+
+---
+
 ### 2. Set up environment variables
 
 Copy the example env file and fill in your credentials:

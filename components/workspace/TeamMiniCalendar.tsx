@@ -164,10 +164,17 @@ export default function TeamMiniCalendar({ workspaceId, currentRole }: Props) {
     }
   };
 
+  const getLocalDateString = (d: Date = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   // ── Reschedule ───────────────────────────────────────────
   const openReschedule = (draft: WorkspaceDraft) => {
     const base = draft.scheduled_time ? new Date(draft.scheduled_time) : new Date(Date.now() + 30 * 60000);
-    setRescheduleDate(base.toISOString().split("T")[0]);
+    setRescheduleDate(getLocalDateString(base));
     setRescheduleTime(base.toTimeString().slice(0, 5));
     setRescheduleOpen(true);
   };
@@ -479,7 +486,7 @@ export default function TeamMiniCalendar({ workspaceId, currentRole }: Props) {
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-400">Date</label>
                   <input type="date" className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none focus:border-gray-400 focus:bg-white"
-                    value={rescheduleDate} min={new Date().toISOString().split("T")[0]} onChange={(e) => setRescheduleDate(e.target.value)} />
+                    value={rescheduleDate} min={getLocalDateString()} onChange={(e) => setRescheduleDate(e.target.value)} />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-400">Time</label>

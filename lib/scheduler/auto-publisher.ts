@@ -265,23 +265,6 @@ async function publishLinkedIn(account: StoredAccount, post: ScheduledPost, atta
   return payload?.id as string | undefined;
 }
 
-async function uploadYouTubeVideo(accessToken: string, attachment: File, metadata: Record<string, unknown>) {
-  const boundary = `postelligence-${crypto.randomUUID()}`;
-  const metadataPart = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`);
-  const fileHeader = Buffer.from(`--${boundary}\r\nContent-Type: ${attachment.type || "application/octet-stream"}\r\n\r\n`);
-  const closing = Buffer.from(`\r\n--${boundary}--`);
-  const body = Buffer.concat([metadataPart, fileHeader, Buffer.from(await attachment.arrayBuffer()), closing]);
-
-  return await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`,
-    },
-    body,
-  });
-}
-
 async function refreshStoredYouTubeToken(account: StoredAccount, userId: string) {
   if (!account.refresh_token) throw new Error("YouTube session expired. Reconnect YouTube.");
 
@@ -311,11 +294,6 @@ async function refreshStoredYouTubeToken(account: StoredAccount, userId: string)
   account.refresh_token = refreshToken;
   account.token_expires_at = tokenExpiresAt;
   return accessToken;
-}
-
-function isTokenExpired(expiresAt?: string | null) {
-  if (!expiresAt) return false;
-  return new Date(expiresAt).getTime() <= Date.now() + 60_000;
 }
 
 async function publishYouTube(account: StoredAccount, post: ScheduledPost) {
@@ -514,6 +492,53 @@ async function requirePublishedId(res: Response, label: string) {
   return id;
 }
 
+async function publishPinterest(account: StoredAccount, text: string, mediaUrl: string): Promise<string | undefined> {
+  let boardId = (account.metadata?.board_id || account.metadata?.default_board_id) as string | undefined;
+  if (!boardId) {
+    try {
+      const listRes = await fetch("https://api.pinterest.com/v5/boards?page_size=25", {
+        headers: { Authorization: `Bearer ${account.access_token}` }
+      });
+      if (listRes.ok) {
+        const data = await listRes.json();
+        if (data.items?.length > 0 && data.items[0].id) boardId = data.items[0].id;
+      }
+    } catch {}
+    if (!boardId) {
+      const createRes = await fetch("https://api.pinterest.com/v5/boards", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${account.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Postelligence Pins", description: "Created automatically by Postelligence for scheduled pins." })
+      });
+      if (createRes.ok) {
+        const data = await createRes.json();
+        boardId = data?.id;
+      }
+    }
+  }
+  if (!boardId) throw new Error("Pinterest requires a board to publish pins.");
+  if (!mediaUrl) throw new Error("Pinterest requires a public image URL.");
+
+  const response = await fetch("https://api.pinterest.com/v5/pins", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${account.access_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      board_id: boardId,
+      title: text.slice(0, 100) || "Postelligence Pin",
+      description: text.slice(0, 800),
+      media_source: { source_type: "image_url", url: mediaUrl },
+    })
+  });
+  return await requirePublishedId(response, "Pinterest publish failed");
+}
+
+async function publishTelegramMessage(account: StoredAccount, text: string, mediaUrl: string, mediaUrls: string[] = []) {
+  const botToken = account.access_token;
+  const chatId = (account.metadata?.chatId as string) || account.account_id;
+  if (!botToken || !chatId) throw new Error("Telegram bot token or Chat ID is missing.");
+  return await publishToTelegram(botToken, chatId, text, mediaUrl, mediaUrls);
+}
+
 async function publishOne(account: StoredAccount, post: ScheduledPost, attachment: File | null, attachments: File[]): Promise<PublishResult> {
   try {
     // Facebook, Threads, and Instagram only have a single caption field with no separate
@@ -533,8 +558,9 @@ async function publishOne(account: StoredAccount, post: ScheduledPost, attachmen
       account.platform === "facebook"  ? await publishFacebook(account, captionOnly, mediaUrl, mediaType, post.media_urls) :
       account.platform === "threads"   ? await publishThreads(account, captionOnly, mediaUrl, mediaType, post.media_urls) :
       account.platform === "instagram" ? await publishInstagram(account, captionOnly, mediaUrl, mediaType, post.media_urls) :
+      account.platform === "pinterest" ? await publishPinterest(account, captionOnly, mediaUrl) :
       account.platform === "discord"   ? await publishDiscord(account, captionOnly, mediaUrl, attachment, attachments) :
-      account.platform === "telegram"  ? await publishTelegramMessage(account, captionOnly, mediaUrl) :
+      account.platform === "telegram"  ? await publishTelegramMessage(account, captionOnly, mediaUrl, post.media_urls) :
       undefined;
 
     return { platform: account.platform, status: "published", message: "Published successfully.", id };
@@ -599,7 +625,7 @@ async function processPost(post: ScheduledPost) {
     const platforms = post.platforms.filter((platform): platform is PublishPlatform =>
       platform === "linkedin" || platform === "youtube" || platform === "bluesky" ||
       platform === "facebook" || platform === "instagram" || platform === "threads" ||
-      platform === "discord" || platform === "telegram"
+      platform === "pinterest" || platform === "discord" || platform === "telegram"
     );
 
     // Workspace-scheduled posts must always publish through the workspace's
@@ -824,6 +850,11 @@ async function publishThreads(account: StoredAccount, text: string, mediaUrl: st
     }))).filter((id): id is string => Boolean(id));
 
     if (childIds.length > 1) {
+      // Wait for each child container to finish processing before creating parent CAROUSEL container
+      for (const childId of childIds) {
+        await waitForThreadsContainer(childId);
+      }
+
       const carouselParams = new URLSearchParams({
         access_token: token,
         media_type: "CAROUSEL",
@@ -931,6 +962,11 @@ async function publishInstagram(account: StoredAccount, text: string, mediaUrl: 
     }))).filter((id): id is string => Boolean(id));
 
     if (childIds.length > 1) {
+      // Wait for each child container to finish processing before creating parent CAROUSEL container
+      for (const childId of childIds) {
+        await waitForContainer(childId);
+      }
+
       const carouselParams = new URLSearchParams({ access_token: token, media_type: "CAROUSEL", caption: text });
       childIds.forEach((id, i) => carouselParams.set(`children[${i}]`, id));
       const containerRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: carouselParams });
@@ -958,8 +994,22 @@ async function publishInstagram(account: StoredAccount, text: string, mediaUrl: 
   } else {
     createParams.set("image_url", mediaUrl);
   }
-  const containerRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams });
-  if (!containerRes.ok) throw new Error(`Instagram container failed: ${await containerRes.text()}`);
+  let containerRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams });
+  if (!containerRes.ok) {
+    const errText = await containerRes.text();
+    if (mediaType === "video" && (errText.includes("2207009") || errText.includes("aspect ratio"))) {
+      console.warn("Instagram Reel share_to_feed rejected due to aspect ratio, retrying as standard Reel...");
+      createParams.delete("share_to_feed");
+      containerRes = await fetch(`${base}/${userId}/media`, { method: "POST", body: createParams });
+    }
+    if (!containerRes.ok) {
+      const finalErrText = await containerRes.text().catch(() => errText);
+      if (finalErrText.includes("2207009") || finalErrText.includes("aspect ratio")) {
+        throw new Error("Instagram image aspect ratio is not supported (error 2207009). Instagram requires feed images to be between 4:5 (0.8) and 1.91:1 aspect ratio. Please crop your image.");
+      }
+      throw new Error(`Instagram container failed: ${finalErrText}`);
+    }
+  }
   const container = await containerRes.json() as MetaContainerResponse;
 
   const publishParams = new URLSearchParams({ access_token: token, creation_id: container.id });
@@ -1002,10 +1052,4 @@ async function publishInstagram(account: StoredAccount, text: string, mediaUrl: 
 async function publishDiscord(account: StoredAccount, text: string, mediaUrl: string, attachment: File | null, attachments: File[]) {
   if (!account.access_token) throw new Error("Discord webhook URL is missing.");
   return await publishToDiscordWebhook(account.access_token, text, mediaUrl || null, attachment, attachments);
-}
-
-async function publishTelegramMessage(account: StoredAccount, text: string, mediaUrl: string) {
-  const chatId = typeof account.metadata?.chatId === "string" ? account.metadata.chatId : account.account_id;
-  if (!account.access_token || !chatId) throw new Error("Telegram bot token or Chat ID is missing.");
-  return await publishToTelegram(account.access_token, chatId, text, mediaUrl || null);
 }

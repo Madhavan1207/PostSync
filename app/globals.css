@@ -292,7 +292,7 @@ a {
 
 .marketing-display {
   color: #191f23;
-  font-size: clamp(3rem, 8vw, 6.5rem);
+  font-size: clamp(1.85rem, 6.2vw, 6.5rem);
   font-weight: 600;
   letter-spacing: -0.045em;
   line-height: 0.95;
@@ -381,7 +381,6 @@ a {
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(31, 37, 40, 0.08);
   border-radius: 20px;
-  padding: 1.25rem 1.5rem;
   backdrop-filter: blur(12px);
 }
 

@@ -9,6 +9,7 @@ import {
   ChevronLeft, ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { MediaLibraryItem } from "@/types";
 
 interface Props {
@@ -30,6 +31,8 @@ export default function LibraryClient({ items: initialItems }: Props) {
   const searchParams = useSearchParams();
   const [items, setItems] = useState<MediaLibraryItem[]>(initialItems);
   const [filter, setFilter] = useState<"all" | "image" | "video">("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<MediaLibraryItem | null>(null);
@@ -99,15 +102,31 @@ export default function LibraryClient({ items: initialItems }: Props) {
   const uploadFile = async (file: File) => {
     setUploading(true);
     try {
+      // Pre-check: Prevent duplicate uploads if file already exists in library state
+      const existing = items.find(
+        (item) => item.file_name === file.name && item.file_size === file.size
+      );
+      if (existing) {
+        showToast("File already exists in your library — duplicate upload prevented.", "success");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setUploading(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.set("file", file);
       const res = await fetch("/api/media-library", { method: "POST", body: formData });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "Upload failed.");
-      const { item } = payload;
-      setItems((prev) => [item, ...prev]);
+      const { item, deduplicated } = payload;
+
+      if (deduplicated) {
+        showToast("File already exists in your library — reused existing item.");
+      } else if (item) {
+        setItems((prev) => [item, ...prev.filter((i) => i.id !== item.id)]);
+        showToast("File uploaded to library.");
+      }
       if (fileInputRef.current) fileInputRef.current.value = "";
-      showToast("File uploaded to library.");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Upload failed.", "error");
     } finally {
@@ -127,6 +146,37 @@ export default function LibraryClient({ items: initialItems }: Props) {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const deleteSelectedItems = async () => {
+    if (selectedIds.length === 0) return;
+    setBatchDeleting(true);
+    try {
+      await Promise.all(
+        selectedIds.map((id) => fetch(`/api/media-library/${id}`, { method: "DELETE" }))
+      );
+      setItems((prev) => prev.filter((i) => !selectedIds.includes(i.id)));
+      showToast(`${selectedIds.length} file${selectedIds.length > 1 ? "s" : ""} deleted.`);
+      setSelectedIds([]);
+    } catch {
+      showToast("Failed to delete selected files.", "error");
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
+  const copySelectedUrls = () => {
+    const selectedItems = items.filter((i) => selectedIds.includes(i.id));
+    const urls = selectedItems.map((i) => i.file_url).join("\n");
+    navigator.clipboard.writeText(urls);
+    showToast(`${selectedItems.length} URL${selectedItems.length > 1 ? "s" : ""} copied to clipboard.`);
+  };
+
+  const createPostWithSelected = () => {
+    const selectedItems = items.filter((i) => selectedIds.includes(i.id));
+    if (selectedItems.length === 0) return;
+    const mediaUrls = selectedItems.map((i) => i.file_url).join(",");
+    router.push(`/create?mediaUrl=${encodeURIComponent(mediaUrls)}`);
   };
 
   const copyUrl = (item: MediaLibraryItem) => {
@@ -247,38 +297,144 @@ export default function LibraryClient({ items: initialItems }: Props) {
         {filtered.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <AnimatePresence>
-              {filtered.map((item) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="group relative cursor-pointer overflow-hidden rounded-2xl border border-[#1f2528]/10 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(31,37,40,0.14)]"
-                  onClick={() => setPreviewItem(item)}
-                >
-                  <div className="relative aspect-[4/3] w-full bg-[#f4f6f0]">
-                    {item.file_type === "image" ? (
-                      <img src={item.file_url} alt={item.file_name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                    ) : (
-                      <div className="relative h-full w-full">
-                        <video
-                          src={item.file_url}
-                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                          preload="metadata"
-                          muted
-                        />
-                        <div className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-md bg-black/60 text-white backdrop-blur-sm">
-                          <Video className="h-3 w-3" />
-                        </div>
-                      </div>
+              {filtered.map((item) => {
+                const isSelected = selectedIds.includes(item.id);
+                const hasAnySelected = selectedIds.length > 0;
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className={cn(
+                      "group relative cursor-pointer overflow-hidden rounded-2xl border bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgba(31,37,40,0.14)]",
+                      isSelected ? "ring-2 ring-[#2f7867] border-transparent scale-[0.98]" : "border-[#1f2528]/10"
                     )}
-                  </div>
-                </motion.div>
-              ))}
+                    onClick={() => setPreviewItem(item)}
+                  >
+                    {/* Top-Left Google Photos Selection Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedIds((prev) =>
+                          prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id]
+                        );
+                      }}
+                      className={cn(
+                        "absolute top-2.5 left-2.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border transition-all duration-200 cursor-pointer shadow-md",
+                        isSelected
+                          ? "border-[#2f7867] bg-[#2f7867] text-white scale-110 ring-2 ring-[#2f7867]/30 opacity-100"
+                          : hasAnySelected
+                          ? "border-slate-300 bg-white/95 text-slate-400 hover:border-[#2f7867] hover:text-[#2f7867] opacity-100"
+                          : "border-white/90 bg-black/40 text-transparent hover:border-white hover:bg-black/60 opacity-0 group-hover:opacity-100"
+                      )}
+                      title={isSelected ? "Deselect item" : "Select item"}
+                    >
+                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                    </button>
+
+                    <div className="relative aspect-[4/3] w-full bg-[#f4f6f0]">
+                      {item.file_type === "image" ? (
+                        <img src={item.file_url} alt={item.file_name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                      ) : (
+                        <div className="relative h-full w-full">
+                          <video
+                            src={item.file_url}
+                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                            preload="metadata"
+                            muted
+                          />
+                          <div className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-md bg-black/60 text-white backdrop-blur-sm">
+                            <Video className="h-3 w-3" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           </div>
         )}
       </div>
+
+      {/* Light-Themed Google Photos Style Floating Multi-Select Action Bar */}
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-slate-200/90 bg-white/95 px-5 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.12)] backdrop-blur-xl text-[#1f2528]"
+          >
+            <div className="flex items-center gap-2 border-r border-slate-200 pr-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f7867] text-xs font-black text-white shadow-sm">
+                {selectedIds.length}
+              </span>
+              <span className="text-xs font-bold tracking-wide text-[#1f2528]">
+                {selectedIds.length} Selected
+              </span>
+            </div>
+
+            {/* Select All / Deselect All Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedIds.length === filtered.length) {
+                  setSelectedIds([]);
+                } else {
+                  setSelectedIds(filtered.map((i) => i.id));
+                }
+              }}
+              className="rounded-xl border border-slate-200/80 bg-slate-100/70 px-3 py-1.5 text-xs font-bold hover:bg-slate-200/80 text-slate-700 transition-colors cursor-pointer"
+            >
+              {selectedIds.length === filtered.length ? "Deselect All" : "Select All"}
+            </button>
+
+            {/* Copy URLs */}
+            <button
+              type="button"
+              onClick={copySelectedUrls}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-100/70 px-3 py-1.5 text-xs font-bold hover:bg-slate-200/80 text-slate-700 transition-colors cursor-pointer"
+            >
+              <Copy className="h-3.5 w-3.5 text-slate-500" />
+              <span>Copy URLs</span>
+            </button>
+
+            {/* Create Post with Selected */}
+            <button
+              type="button"
+              onClick={createPostWithSelected}
+              className="flex items-center gap-1.5 rounded-xl bg-[#2f7867] px-3.5 py-1.5 text-xs font-bold text-white hover:bg-[#256254] transition-colors cursor-pointer shadow-md"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Create Post</span>
+            </button>
+
+            {/* Delete Selected */}
+            <button
+              type="button"
+              onClick={() => void deleteSelectedItems()}
+              disabled={batchDeleting}
+              className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {batchDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              <span>Delete ({selectedIds.length})</span>
+            </button>
+
+            {/* Dismiss */}
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="ml-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer p-1"
+              title="Clear selection"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Preview Modal */}
       <AnimatePresence>

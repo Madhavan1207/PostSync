@@ -7,6 +7,7 @@ import { z } from "zod";
 import { parseOptionalJsonBody, parseRouteParams } from "@/lib/validation/http";
 import { idParams, isoDateTime } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
+import { schedulePostWithInngest } from "@/lib/inngest/client";
 
 export const dynamic = "force-dynamic";
 
@@ -146,6 +147,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     });
 
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+
+    // Send event to Inngest to sleep until scheduledTime and auto-publish
+    await schedulePostWithInngest({ scheduledTime, workspaceId: membership.workspace_id });
 
     const { data: updated, error } = await supabase
       .from("workspace_drafts")
@@ -303,6 +307,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Dispatch event to Inngest for the rescheduled time
+  await schedulePostWithInngest({ scheduledTime, workspaceId: membership.workspace_id });
 
   const { data: userData } = await createAdminClient().auth.admin.getUserById(user.id);
   const userName = userData?.user?.user_metadata?.full_name || userData?.user?.email || "Unknown";

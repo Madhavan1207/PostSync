@@ -21,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
+    "inngest": "^4.13.0",
     "lucide-react": "^1.17.0",
     "next": "^16.2.10",
     "postcss": "^8.5.15",
@@ -29,6 +30,7 @@
     "recharts": "^3.9.2",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
+    "telegram": "^2.26.22",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -41,7 +43,8 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.2.10",
     "husky": "^9.1.7",
+    "is-arrayish": "^0.3.4",
     "lint-staged": "^17.1.0",
-    "typescript": "^6.0.3"
+    "typescript": "6.0.3"
   }
 }

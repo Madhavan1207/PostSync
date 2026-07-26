@@ -1,62 +1,35 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Check } from "lucide-react";
-import { motion } from "framer-motion";
+import { Check, HelpCircle, ArrowRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { PageTransition } from "@/components/marketing/PageTransition";
 import { PricingVisual } from "@/components/marketing/PricingVisual";
 
-const plans = [
+const faqPricing = [
   {
-    name: "Starter",
-    price: "Free",
-    period: "forever",
-    description: "Perfect for solo creators testing the waters.",
-    cta: "Get started",
-    featured: false,
-    features: [
-      "2 connected accounts",
-      "10 scheduled posts / month",
-      "AI caption assist",
-      "Basic analytics",
-      "Media library (1 GB)"
-    ]
+    q: "Can I switch plans later?",
+    a: "Absolutely. You can upgrade, downgrade, or cancel your subscription at any point. Downgrades take effect at the end of the current billing cycle, while upgrades take effect immediately."
   },
   {
-    name: "Pro",
-    price: "$19",
-    period: "per month",
-    description: "For creators who publish consistently and want full power.",
-    cta: "Start free trial",
-    featured: true,
-    features: [
-      "Unlimited connected accounts",
-      "Unlimited scheduled posts",
-      "Full AI Studio access",
-      "Advanced analytics",
-      "Media library (50 GB)",
-      "Priority support"
-    ]
+    q: "Can I cancel my subscription anytime?",
+    a: "Yes. Your subscription will remain active until the end of the current billing cycle, and you won't be charged again."
   },
   {
-    name: "Team",
-    price: "$49",
-    period: "per month",
-    description: "Built for agencies and teams managing multiple brands.",
-    cta: "Contact sales",
-    featured: false,
-    features: [
-      "Everything in Pro",
-      "5 team seats included",
-      "Shared content calendar",
-      "Approval workflows",
-      "Brand workspaces",
-      "Dedicated onboarding"
-    ]
+    q: "What payment methods are supported?",
+    a: "We support UPI, Netbanking, and all major international and domestic credit/debit cards (Visa, MasterCard, RuPay, Amex) processed securely through Razorpay."
+  },
+  {
+    q: "Is there a limit on connected channels?",
+    a: "On the Starter plan, you can connect up to 4 platforms. Pro supports up to 8 connected platforms, and Plus grants access to all available networks."
   }
 ];
 
 export default function PricingPage() {
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annually">("annually");
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -65,22 +38,103 @@ export default function PricingPage() {
     e.currentTarget.style.setProperty("--mouse-y", `${y}px`);
   };
 
+  const getPrice = (planName: string) => {
+    if (planName === "Starter") return "Free";
+    if (planName === "Pro") {
+      return billingCycle === "annually" ? "₹1,199" : "₹1,499";
+    }
+    // Plus
+    return billingCycle === "annually" ? "₹3,199" : "₹3,999";
+  };
+
+  const plans = [
+    {
+      name: "Starter",
+      description: "Perfect for solo creators starting out.",
+      cta: "Get started free",
+      featured: false,
+      features: [
+        "4 connected platforms limit",
+        "10 scheduled posts / month",
+        "Basic AI Composer assist",
+        "Basic channel analytics"
+      ]
+    },
+    {
+      name: "Pro",
+      description: "For creators publishing consistently with specific network limits.",
+      cta: "Upgrade to Pro",
+      featured: true,
+      features: [
+        "Everything in Starter",
+        "8 connected platforms limit",
+        "150 scheduled posts / month",
+        "50 automated posts / month",
+        "AI Studio calibration (5,000 words/mo)",
+        "Advanced performance analytics",
+        "2 team workspaces limit",
+        "Priority developer support"
+      ]
+    },
+    {
+      name: "Plus",
+      description: "Built for growing creator teams needing advanced automation.",
+      cta: "Upgrade to Plus",
+      featured: false,
+      features: [
+        "Everything in Pro",
+        "All available platforms",
+        "1,000 scheduled posts / month",
+        "300 automated posts / month",
+        "AI Studio calibration (50,000 words/mo)",
+        "Background automated cron publishing",
+        "5 team workspaces limit"
+      ]
+    }
+  ];
+
   return (
     <PageTransition>
-      <section className="marketing-page-hero px-5 pb-10 pt-12 md:px-8 md:pb-16 md:pt-16">
-        <div className="mx-auto max-w-6xl grid gap-12 lg:grid-cols-[1.1fr_0.9fr] items-center">
+      {/* Hero Header Section */}
+      <section className="marketing-page-hero px-5 pb-10 pt-[100px] md:px-8 md:pb-16 md:pt-[104px]">
+        <div className="mx-auto max-w-6xl grid gap-12 lg:grid-cols-[1.1fr_0.9fr] items-center text-left">
           <div>
-            <p className="marketing-eyebrow">Pricing</p>
-            <h1 className="marketing-display mt-5 max-w-4xl">
+            <p className="marketing-eyebrow">Pricing Plans</p>
+            <h1 className="marketing-display mt-5 max-w-4xl leading-tight">
               Simple plans.
               <br />
               Serious results.
             </h1>
-            <p className="mt-7 max-w-2xl text-lg leading-relaxed text-[#4f5b62]">
-              Start free. Upgrade when you&apos;re ready. No hidden fees, no surprise limits on the
-              features that matter most.
+            <p className="mt-7 max-w-xl text-lg leading-relaxed text-[#4f5b62]">
+              Start free. Upgrade when you are ready to expand your reach. Clear billing, no surprises, cancel anytime.
             </p>
+            
+            {/* Billing Cycle Switcher Toggle */}
+            <div className="mt-8 flex items-center gap-3">
+              <span className={`text-xs font-black uppercase tracking-wider transition-colors ${billingCycle === "monthly" ? "text-[#1f2528]" : "text-slate-400"}`}>
+                Monthly
+              </span>
+              <button
+                onClick={() => setBillingCycle(prev => prev === "monthly" ? "annually" : "monthly")}
+                className="w-12 h-6.5 rounded-full bg-slate-100 border border-slate-200 p-0.5 relative transition-colors focus:outline-none cursor-pointer"
+              >
+                <motion.div 
+                  layout
+                  className="h-5 w-5 rounded-full bg-[#2f7867]"
+                  style={{ float: billingCycle === "annually" ? "right" : "left" }}
+                />
+              </button>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-black uppercase tracking-wider transition-colors ${billingCycle === "annually" ? "text-[#1f2528]" : "text-slate-400"}`}>
+                  Annually
+                </span>
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[#2f7867] tracking-wider animate-pulse">
+                  Save 20%
+                </span>
+              </div>
+            </div>
           </div>
+          
           <div className="perspective-1000 hidden lg:block">
             <motion.div
               animate={{ y: [0, -8, 0] }}
@@ -93,72 +147,158 @@ export default function PricingPage() {
         </div>
       </section>
 
-      <section className="px-5 pb-24 md:px-8 md:pb-32">
-        <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-3">
-          {plans.map((plan) => (
-            <motion.div
-              key={plan.name}
-              whileHover={{ y: -4 }}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-              onMouseMove={handleMouseMove}
-              className="glow-card rounded-[28px]"
-            >
-              <article
-                className={
-                  plan.featured 
-                    ? "marketing-pricing-card marketing-pricing-card-featured h-full relative z-20" 
-                    : "marketing-pricing-card h-full relative z-20"
-                }
+      {/* Pricing Cards Grid Section */}
+      <section className="px-5 pb-16 md:px-8">
+        <div className="mx-auto grid max-w-6xl gap-5 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {plans.map((plan) => {
+            const priceVal = getPrice(plan.name);
+            return (
+              <motion.div
+                key={plan.name}
+                whileHover={{ y: -6 }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                onMouseMove={handleMouseMove}
+                className="glow-card rounded-[28px] sm:rounded-[32px] border border-[#1f2528]/8 bg-white overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.025)] flex flex-col justify-between"
               >
-                {plan.featured ? (
-                  <span className="marketing-pricing-badge">Most popular</span>
-                ) : null}
-
-                <div>
-                  <h2 className="text-xl font-semibold tracking-[-0.02em] text-[#1f2528]">{plan.name}</h2>
-                  <p className="mt-2 text-sm leading-relaxed text-[#627078]">{plan.description}</p>
-                </div>
-
-                <div className="mt-8">
-                  <div className="flex items-end gap-1">
-                    <span className="text-5xl font-semibold tracking-[-0.05em] text-[#1f2528]">
-                      {plan.price}
-                    </span>
-                    {plan.price !== "Free" ? (
-                      <span className="mb-2 text-sm text-[#627078]">/{plan.period.split(" ")[1]}</span>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-sm text-[#7b858d]">{plan.period}</p>
-                </div>
-
-                <Link
-                  href="/login"
+                <article
                   className={
-                    plan.featured
-                      ? "marketing-cta-primary mt-8 w-full justify-center"
-                      : "marketing-cta-secondary mt-8 w-full justify-center border border-[#1f2528]/10 bg-white"
+                    plan.featured 
+                      ? "marketing-pricing-card marketing-pricing-card-featured h-full relative z-20 p-6 sm:p-8 flex flex-col justify-between" 
+                      : "marketing-pricing-card h-full relative z-20 p-6 sm:p-8 flex flex-col justify-between"
                   }
                 >
-                  {plan.cta}
-                </Link>
+                  <div>
+                    {plan.featured && (
+                      <span className="absolute top-4 right-4 bg-[#2f7867] text-white text-[9px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-sm">
+                        Most popular
+                      </span>
+                    )}
 
-                <ul className="mt-8 space-y-3.5">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-3 text-[0.92rem] text-[#4f5b62]">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2f7867]" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            </motion.div>
-          ))}
+                    <div className="text-left">
+                      <h2 className="text-xl font-black tracking-tight text-[#1f2528]">{plan.name}</h2>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-500 font-semibold">{plan.description}</p>
+                    </div>
+
+                    <div className="mt-8 text-left border-b border-slate-100 pb-6">
+                      <div className="flex items-baseline gap-1.5">
+                        <AnimatePresence mode="wait">
+                          <motion.span 
+                            key={priceVal}
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 4 }}
+                            transition={{ duration: 0.2 }}
+                            className="text-5xl font-black tracking-tight text-[#1f2528]"
+                          >
+                            {priceVal}
+                          </motion.span>
+                        </AnimatePresence>
+                        {priceVal !== "Free" && (
+                          <span className="text-sm text-slate-400 font-bold">/mo</span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        {priceVal === "Free" ? "forever" : billingCycle === "annually" ? "billed annually" : "billed monthly"}
+                      </p>
+                    </div>
+
+                    <ul className="mt-8 space-y-4 text-left">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-3 text-xs text-[#3b444a] font-semibold leading-normal">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2f7867] stroke-[3]" />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <Link
+                    href="/login"
+                    className={
+                      plan.featured
+                        ? "inline-flex items-center justify-center gap-1.5 rounded-full bg-[#2f7867] hover:bg-[#205146] px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-md hover:shadow-none transition-all duration-300 w-full mt-10 cursor-pointer"
+                        : "inline-flex items-center justify-center gap-1.5 rounded-full border border-[#1f2528]/10 bg-slate-50 hover:bg-slate-100 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-[#1f2528] transition-all duration-300 w-full mt-10 cursor-pointer"
+                    }
+                  >
+                    {plan.cta}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </article>
+              </motion.div>
+            );
+          })}
         </div>
+      </section>
 
-        <p className="mx-auto mt-12 max-w-2xl text-center text-sm leading-relaxed text-[#7b858d]">
-          All plans include secure OAuth connections, encrypted sessions, and access to our core
-          publishing engine. Cancel anytime.
-        </p>
+      {/* Contact Sales for custom needs block */}
+      <section className="px-5 pb-16 md:px-8 -mt-4">
+        <div className="mx-auto max-w-6xl rounded-3xl border border-dashed border-[#1f2528]/15 bg-[#fbfbf9]/60 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 text-left">
+          <div>
+            <h4 className="text-base font-black text-[#1f2528] tracking-tight">Are your needs more than this?</h4>
+            <p className="text-xs text-slate-500 mt-1.5 font-semibold">For enterprise branding, custom webhook automation arrays, or dedicated account managers.</p>
+          </div>
+          <Link
+            href="/contact"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#1f2528] hover:bg-[#2e363b] px-6 py-3 text-xs font-black uppercase tracking-wider transition-all duration-300 cursor-pointer shrink-0"
+            style={{ color: "#ffffff" }}
+          >
+            <span className="text-white" style={{ color: "#ffffff" }}>Contact Sales</span>
+            <ArrowRight className="h-3.5 w-3.5 text-white" style={{ color: "#ffffff" }} />
+          </Link>
+        </div>
+      </section>
+
+      {/* Pricing FAQs Accordion Section */}
+      <section className="px-5 pb-28 md:px-8 border-t border-slate-100 pt-20">
+        <div className="mx-auto max-w-3xl">
+          <div className="text-center mb-12">
+            <p className="marketing-eyebrow">FAQs</p>
+            <h2 className="text-3xl font-black text-[#1f2528] tracking-tight mt-4">Pricing Questions</h2>
+          </div>
+
+          <div className="space-y-4">
+            {faqPricing.map((item, index) => {
+              const isOpen = openFaq === index;
+              return (
+                <div 
+                  key={index}
+                  className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+                >
+                  <button
+                    onClick={() => setOpenFaq(isOpen ? null : index)}
+                    className="w-full flex items-center justify-between p-5 text-left font-black text-sm text-[#1f2528] focus:outline-none cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <HelpCircle className="h-4.5 w-4.5 text-[#2f7867] shrink-0" />
+                      {item.q}
+                    </span>
+                    <span className="text-xl font-bold text-slate-400 leading-none">
+                      {isOpen ? "−" : "+"}
+                    </span>
+                  </button>
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: "easeInOut" }}
+                      >
+                        <div className="px-5 pb-5 pt-1 text-xs leading-relaxed text-[#4f5b62] font-semibold border-t border-slate-100 bg-slate-50/50">
+                          {item.a}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="mt-12 text-center text-xs leading-relaxed text-[#7b858d] font-semibold">
+            All transaction queries, GST invoicing details, and subscription handles are processed securely. Cancel anytime.
+          </p>
+        </div>
       </section>
     </PageTransition>
   );

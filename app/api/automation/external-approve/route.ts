@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient as createBaseClient } from "@supabase/supabase-js";
+import { schedulePostWithInngest } from "@/lib/inngest/client";
 import { createHash } from "crypto";
 import { uuid } from "@/lib/validation/schemas";
 
@@ -166,6 +167,9 @@ export async function GET(req: NextRequest) {
         .single();
 
       if (postErr) throw postErr;
+
+      // Dispatch event to Inngest to sleep until scheduledTime and publish automatically
+      await schedulePostWithInngest({ postId: post.id, scheduledTime: targetTime.toISOString() });
 
       // Update log to approved referencing scheduled_post_id
       await adminSupabase

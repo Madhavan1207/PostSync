@@ -179,7 +179,9 @@ export default function WorkspaceSocialAccounts({
       {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading connected accounts...</div>
+        <div className="flex items-center justify-center gap-2.5 rounded-2xl border border-gray-100 bg-white p-8 text-xs font-bold text-slate-400 min-h-[120px]">
+          <Loader2 className="h-4 w-4 animate-spin text-[#2f7867]" /> Loading connected accounts...
+        </div>
       ) : (
         <div className="space-y-3">
           {accounts.length === 0 && (

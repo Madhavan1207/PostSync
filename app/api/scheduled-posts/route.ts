@@ -5,6 +5,7 @@ import { canPublish } from "@/lib/workspace/permissions";
 import { parseJsonBody, parseSearchParams } from "@/lib/validation/http";
 import { httpUrl, isoDateTime, platformId, uuid } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
+import { schedulePostWithInngest } from "@/lib/inngest/client";
 
 const ListQuery = z.object({
   workspace_id: uuid.optional(),
@@ -70,6 +71,19 @@ export async function POST(req: NextRequest) {
     workspace_id, workspace_draft_id,
   } = parsed.data;
 
+  const selectedPlatforms = Array.isArray(platforms) ? platforms : [];
+  const requiresMedia = selectedPlatforms.some((p: string) =>
+    ["instagram", "youtube", "pinterest"].includes(p.toLowerCase())
+  );
+  const mediaList = Array.isArray(media_urls) ? media_urls.filter(Boolean) : [];
+
+  if (requiresMedia && mediaList.length === 0) {
+    return NextResponse.json(
+      { error: "Instagram, YouTube, and Pinterest require an image or video file. Please attach media before scheduling." },
+      { status: 400 }
+    );
+  }
+
   if (workspace_id) {
     const { data: membership } = await supabase
       .from("workspace_members")
@@ -103,5 +117,11 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Dispatch event to Inngest to sleep until scheduled_time and auto-publish
+  if (data?.scheduled_time) {
+    await schedulePostWithInngest({ postId: data.id, scheduledTime: data.scheduled_time });
+  }
+
   return NextResponse.json({ post: data });
 }

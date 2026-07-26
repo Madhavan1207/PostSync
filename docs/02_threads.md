@@ -1,4 +1,4 @@
-# Threads Integration
+# 2_ Threads Integration
 
 ## Status: ⏳ Deploy Only — Not Working on Localhost
 

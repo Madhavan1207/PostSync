@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MoreHorizontal, Plus, X, Check, Loader2,
@@ -142,7 +143,7 @@ function PlatformAvatar({ platform, size = "lg" }: { platform: Platform; size?: 
 }
 
 // ── Animated connection line decoration ─────────────────────────────────────
-function ConnectionDot({ connected }: { connected: boolean }) {
+function _ConnectionDot({ connected }: { connected: boolean }) {
   return (
     <div className="relative flex items-center gap-1.5">
       <span
@@ -197,13 +198,17 @@ function PlatformCard({
 
   useEffect(() => {
     if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: MouseEvent | TouchEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
   }, [menuOpen]);
 
   const profileUrls: Record<string, string> = {
@@ -265,9 +270,16 @@ function PlatformCard({
         {/* 3-dot menu top-right */}
         <div className="absolute top-2.5 right-2.5" ref={menuRef}>
           <button
-            className="grid h-7 w-7 place-items-center rounded-xl border border-white/25 bg-black/15 backdrop-blur-sm hover:bg-black/30 transition-all"
+            type="button"
+            className="grid h-7 w-7 place-items-center rounded-xl border border-white/25 bg-black/15 backdrop-blur-sm hover:bg-black/30 transition-all cursor-pointer"
             style={{ color: "#fff" }}
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((prev) => !prev);
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+            }}
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </button>
@@ -409,6 +421,7 @@ function PlatformCard({
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function IntegrationsClient({ socialAccounts }: Props) {
+  const router = useRouter();
   const [disconnectingPlatform, setDisconnectingPlatform] = useState<string | null>(null);
   const [blueskyModalOpen, setBlueskyModalOpen] = useState(false);
   const [blueskyHandle, setBlueskyHandle] = useState("");
@@ -424,10 +437,22 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
   const [discordError, setDiscordError] = useState<string | null>(null);
 
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
+  const [telegramMethodTab, setTelegramMethodTab] = useState<"phone" | "bot">("phone");
+  const [telegramStep, setTelegramStep] = useState<"phone" | "code">("phone");
+  const [telegramPhoneNumber, setTelegramPhoneNumber] = useState("");
+  const [telegramPhoneCode, setTelegramPhoneCode] = useState("");
+  const [telegram2FAPassword, setTelegram2FAPassword] = useState("");
+  const [telegramPhoneCodeHash, setTelegramPhoneCodeHash] = useState("");
+  const [telegramSessionString, setTelegramSessionString] = useState("");
   const [telegramBotToken, setTelegramBotToken] = useState("");
   const [telegramChatId, setTelegramChatId] = useState("");
   const [telegramConnecting, setTelegramConnecting] = useState(false);
   const [telegramError, setTelegramError] = useState<string | null>(null);
+
+  const [pinterestModalOpen, setPinterestModalOpen] = useState(false);
+  const [pinterestAccessToken, setPinterestAccessToken] = useState("");
+  const [pinterestConnecting, setPinterestConnecting] = useState(false);
+  const [pinterestError, setPinterestError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<"all" | "connected" | "available">("all");
 
   const facebookAccount  = getConnectedFacebookAccount(socialAccounts);
@@ -571,6 +596,38 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
     return true;
   });
 
+  const connectPinterest = async () => {
+    if (!pinterestAccessToken.trim()) {
+      setPinterestError("Please enter your Pinterest Access Token.");
+      return;
+    }
+
+    setPinterestConnecting(true);
+    setPinterestError(null);
+
+    try {
+      const res = await fetch("/api/integrations/pinterest/manual-connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: pinterestAccessToken.trim() }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to connect Pinterest.");
+      }
+
+      setPinterestModalOpen(false);
+      setPinterestAccessToken("");
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to connect Pinterest.";
+      setPinterestError(msg);
+    } finally {
+      setPinterestConnecting(false);
+    }
+  };
+
   const handleConnect = (platform: Platform) => {
     if (platform.id === "bluesky") {
       setBlueskyError(null);
@@ -586,6 +643,11 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
       setTelegramModalOpen(true);
       return;
     }
+    if (platform.id === "pinterest") {
+      setPinterestError(null);
+      setPinterestModalOpen(true);
+      return;
+    }
     if (platform.id === "linkedin") {
       window.location.assign("/api/integrations/linkedin/connect");
       return;
@@ -594,7 +656,6 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
       instagram: "/api/integrations/instagram/connect",
       facebook:  "/api/integrations/meta/connect?platform=facebook",
       threads:   "/api/integrations/threads/connect",
-      pinterest: "/api/integrations/pinterest/connect",
       youtube:   "/api/integrations/youtube/connect",
     };
     if (routes[platform.id]) window.location.assign(routes[platform.id]);
@@ -684,7 +745,70 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
     }
   };
 
-  const connectTelegram = async () => {
+  const sendTelegramCode = async () => {
+    if (!telegramPhoneNumber.trim()) {
+      setTelegramError("Please enter your Telegram phone number with country code (e.g. +1234567890).");
+      return;
+    }
+    setTelegramConnecting(true);
+    setTelegramError(null);
+    try {
+      const res = await fetch("/api/integrations/telegram/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_code", phoneNumber: telegramPhoneNumber.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTelegramError(data?.error || "Failed to send code to Telegram.");
+        return;
+      }
+      setTelegramPhoneCodeHash(data.phoneCodeHash || "");
+      setTelegramSessionString(data.sessionString || "");
+      setTelegramStep("code");
+    } catch {
+      setTelegramError("Couldn't reach the server. Try again.");
+    } finally {
+      setTelegramConnecting(false);
+    }
+  };
+
+  const verifyTelegramCode = async () => {
+    if (!telegramPhoneCode.trim()) {
+      setTelegramError("Please enter the 5-digit code sent to your Telegram app.");
+      return;
+    }
+    setTelegramConnecting(true);
+    setTelegramError(null);
+    try {
+      const res = await fetch("/api/integrations/telegram/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify_code",
+          phoneNumber: telegramPhoneNumber.trim(),
+          phoneCode: telegramPhoneCode.trim(),
+          phoneCodeHash: telegramPhoneCodeHash,
+          sessionString: telegramSessionString,
+          password: telegram2FAPassword.trim() || undefined,
+          chatId: telegramChatId.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTelegramError(data?.error || "Verification failed. Check your code.");
+        return;
+      }
+      setTelegramModalOpen(false);
+      window.location.reload();
+    } catch {
+      setTelegramError("Couldn't reach the server. Try again.");
+    } finally {
+      setTelegramConnecting(false);
+    }
+  };
+
+  const connectTelegramBot = async () => {
     if (!telegramBotToken.trim() || !telegramChatId.trim()) {
       setTelegramError("Enter both your Bot Token and Chat/Channel ID.");
       return;
@@ -788,10 +912,10 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
               initial={{ opacity: 0, x: 24 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
-              className="flex flex-col items-end gap-5"
+              className="flex flex-col items-start lg:items-end gap-5 w-full lg:w-auto"
             >
               {/* Connected channels counter card */}
-              <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm px-5 py-4 shadow-md flex items-center gap-5">
+              <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm px-5 py-4 shadow-md flex items-center gap-5 w-full sm:w-auto">
                 {/* Progress ring */}
                 <div className="relative w-16 h-16 flex-shrink-0">
                   <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
@@ -836,7 +960,7 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
               </div>
 
               {/* Platform icons mosaic */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 max-w-full overflow-x-auto pb-1 no-scrollbar sm:flex-wrap">
                 {platforms.map((p, i) => (
                   <MosaicIcon key={p.id} platform={p} delay={0.25 + i * 0.05} />
                 ))}
@@ -1195,7 +1319,7 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal header */}
-              <div className="flex items-center gap-3 mb-5">
+              <div className="flex items-center gap-3 mb-4">
                 <div
                   className="h-12 w-12 rounded-2xl grid place-items-center text-white shadow-lg flex-shrink-0"
                   style={{ background: "linear-gradient(135deg, #26A5E4, #1E88C7)" }}
@@ -1204,46 +1328,245 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-slate-800 leading-none">Connect Telegram</h3>
-                  <p className="text-xs text-slate-400 font-medium mt-1">Via Bot API Credentials</p>
+                  <p className="text-xs text-slate-400 font-medium mt-1">Option 4: Phone & App Code Login</p>
+                </div>
+              </div>
+
+              {/* Method Switcher Tabs */}
+              <div className="flex rounded-xl bg-slate-100 p-1 mb-5">
+                <button
+                  type="button"
+                  onClick={() => { setTelegramMethodTab("phone"); setTelegramError(null); }}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${telegramMethodTab === "phone" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  📱 Phone + Code (Option 4)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTelegramMethodTab("bot"); setTelegramError(null); }}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${telegramMethodTab === "bot" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  🤖 Bot Token
+                </button>
+              </div>
+
+              {telegramMethodTab === "phone" ? (
+                <>
+                  {telegramStep === "phone" ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Telegram Phone Number</label>
+                        <input
+                          type="text"
+                          value={telegramPhoneNumber}
+                          onChange={(e) => setTelegramPhoneNumber(e.target.value)}
+                          placeholder="+1234567890 (with country code)"
+                          disabled={telegramConnecting}
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Target Channel Handle (Optional)</label>
+                        <input
+                          type="text"
+                          value={telegramChatId}
+                          onChange={(e) => setTelegramChatId(e.target.value)}
+                          placeholder="@mychannel (or leave empty for personal profile)"
+                          disabled={telegramConnecting}
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-sky-100 bg-sky-50 px-3.5 py-2.5 text-xs font-semibold text-sky-800 flex items-center justify-between">
+                        <span>Code sent to <strong>{telegramPhoneNumber}</strong></span>
+                        <button type="button" onClick={() => setTelegramStep("phone")} className="text-[11px] underline text-sky-600 font-bold">Change</button>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">5-Digit Telegram App Code</label>
+                        <input
+                          type="text"
+                          value={telegramPhoneCode}
+                          onChange={(e) => setTelegramPhoneCode(e.target.value)}
+                          placeholder="e.g. 54321"
+                          disabled={telegramConnecting}
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-base font-black tracking-widest text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">2FA Password (If Enabled on your account)</label>
+                        <input
+                          type="password"
+                          value={telegram2FAPassword}
+                          onChange={(e) => setTelegram2FAPassword(e.target.value)}
+                          placeholder="Leave blank if no 2FA password set"
+                          disabled={telegramConnecting}
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {telegramError && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5"
+                    >
+                      {telegramError}
+                    </motion.p>
+                  )}
+
+                  <div className="mt-6 flex gap-2.5">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 rounded-xl h-10 text-xs font-bold"
+                      disabled={telegramConnecting}
+                      onClick={() => setTelegramModalOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <button
+                      disabled={telegramConnecting}
+                      onClick={() => void (telegramStep === "phone" ? sendTelegramCode() : verifyTelegramCode())}
+                      className="flex-1 text-white font-bold transition rounded-xl text-xs h-10 flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 hover:opacity-90 active:scale-[0.98]"
+                      style={{ background: "linear-gradient(135deg, #26A5E4, #1E88C7)" }}
+                    >
+                      {telegramConnecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {telegramConnecting ? "Processing…" : telegramStep === "phone" ? "Send Code to App 📩" : "Verify & Connect"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-3.5 mb-4 text-xs text-slate-600 leading-relaxed space-y-1.5">
+                    <p className="font-bold text-slate-800">Quick 3-Step Setup:</p>
+                    <ol className="list-decimal list-inside space-y-1 font-medium text-slate-600">
+                      <li>Open Telegram & search for <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="font-bold text-sky-600 underline">@BotFather ↗</a></li>
+                      <li>Send <code className="bg-white px-1 py-0.5 rounded text-[11px] font-bold text-slate-800">/newbot</code> to get your <strong>Bot Token</strong></li>
+                      <li>Add your bot as an <strong>Admin</strong> in your Telegram Channel</li>
+                    </ol>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Bot API Token</label>
+                      <input
+                        type="text"
+                        value={telegramBotToken}
+                        onChange={(e) => setTelegramBotToken(e.target.value)}
+                        placeholder="123456789:ABCdefGhIJKlmNoPQRsT..."
+                        disabled={telegramConnecting}
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Telegram Channel Handle / ID</label>
+                      <input
+                        type="text"
+                        value={telegramChatId}
+                        onChange={(e) => setTelegramChatId(e.target.value)}
+                        placeholder="@mychannel or -100xxxxxxxxx"
+                        disabled={telegramConnecting}
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                      />
+                    </div>
+                  </div>
+
+                  {telegramError && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5"
+                    >
+                      {telegramError}
+                    </motion.p>
+                  )}
+
+                  <div className="mt-6 flex gap-2.5">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 rounded-xl h-10 text-xs font-bold"
+                      disabled={telegramConnecting}
+                      onClick={() => setTelegramModalOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <button
+                      disabled={telegramConnecting}
+                      onClick={() => void connectTelegramBot()}
+                      className="flex-1 text-white font-bold transition rounded-xl text-xs h-10 flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 hover:opacity-90 active:scale-[0.98]"
+                      style={{ background: "linear-gradient(135deg, #26A5E4, #1E88C7)" }}
+                    >
+                      {telegramConnecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {telegramConnecting ? "Connecting…" : "Connect Account"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Pinterest Modal */}
+        {pinterestModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+            onClick={() => !pinterestConnecting && setPinterestModalOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 16 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-7 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="flex items-center gap-3 mb-5">
+                <div
+                  className="h-12 w-12 rounded-2xl grid place-items-center text-white shadow-lg flex-shrink-0"
+                  style={{ background: "linear-gradient(135deg, #E60023, #BD081C)" }}
+                >
+                  <PlatformLogo id="pinterest" className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 leading-none">Connect Pinterest</h3>
+                  <p className="text-xs text-slate-400 font-medium mt-1">Via Developer Access Token</p>
                 </div>
               </div>
 
               <p className="text-xs text-slate-500 font-medium leading-relaxed mb-5">
-                Create a bot using @BotFather to get a <strong>Bot Token</strong>, then add your bot as an admin to your target channel/group and use its handle/ID.
+                Generate an <strong>Access Token</strong> in your Pinterest Developer Portal (My Apps → Generate access tokens) and paste it below to connect immediately.
               </p>
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Bot API Token</label>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Pinterest Access Token</label>
                   <input
                     type="text"
-                    value={telegramBotToken}
-                    onChange={(e) => setTelegramBotToken(e.target.value)}
-                    placeholder="123456789:ABCdefGhIJKlmNoPQRsT..."
-                    disabled={telegramConnecting}
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Chat / Channel ID</label>
-                  <input
-                    type="text"
-                    value={telegramChatId}
-                    onChange={(e) => setTelegramChatId(e.target.value)}
-                    placeholder="-100xxxxxxxxx or @channelname"
-                    disabled={telegramConnecting}
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                    value={pinterestAccessToken}
+                    onChange={(e) => setPinterestAccessToken(e.target.value)}
+                    placeholder="pina_..."
+                    disabled={pinterestConnecting}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 transition"
                   />
                 </div>
               </div>
 
-              {telegramError && (
+              {pinterestError && (
                 <motion.p
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="mt-4 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5"
                 >
-                  {telegramError}
+                  {pinterestError}
                 </motion.p>
               )}
 
@@ -1252,19 +1575,19 @@ export default function IntegrationsClient({ socialAccounts }: Props) {
                   variant="secondary"
                   size="sm"
                   className="flex-1 rounded-xl h-10 text-xs font-bold"
-                  disabled={telegramConnecting}
-                  onClick={() => setTelegramModalOpen(false)}
+                  disabled={pinterestConnecting}
+                  onClick={() => setPinterestModalOpen(false)}
                 >
                   Cancel
                 </Button>
                 <button
-                  disabled={telegramConnecting}
-                  onClick={() => void connectTelegram()}
+                  disabled={pinterestConnecting}
+                  onClick={() => void connectPinterest()}
                   className="flex-1 text-white font-bold transition rounded-xl text-xs h-10 flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 hover:opacity-90 active:scale-[0.98]"
-                  style={{ background: "linear-gradient(135deg, #26A5E4, #1E88C7)" }}
+                  style={{ background: "linear-gradient(135deg, #E60023, #BD081C)" }}
                 >
-                  {telegramConnecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {telegramConnecting ? "Connecting…" : "Connect Account"}
+                  {pinterestConnecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {pinterestConnecting ? "Connecting…" : "Connect Account"}
                 </button>
               </div>
             </motion.div>

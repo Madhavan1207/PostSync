@@ -1,4 +1,4 @@
-# Pinterest Integration
+# 4_ Pinterest Integration
 
 ## Status: ⚠️ Waiting — Trial Access Approval Pending
 
