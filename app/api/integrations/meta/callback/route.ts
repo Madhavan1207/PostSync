@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { saveLocalMetaAccount } from "@/lib/integrations/local-social-accounts";
 import { upsertSocialAccount } from "@/lib/integrations/upsert-social-account";
+import { readOAuthCallbackParams } from "@/lib/validation/oauth";
 import {
   exchangeForLongLivedMetaToken,
   exchangeMetaCode,
@@ -54,9 +55,9 @@ function readStateCookie(rawCookie?: string) {
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const state = requestUrl.searchParams.get("state");
-  const oauthError = requestUrl.searchParams.get("error");
+  // Validated and bounded; an invalid value reads as null so the existing
+  // "missing OAuth data" redirect below handles it exactly as before.
+  const { code, state, error: oauthError } = readOAuthCallbackParams(requestUrl);
   const supabase = await createClient();
 
   const redirectWithClearedState = (url: URL) => {

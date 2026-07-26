@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient as createBaseClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
+import { uuid } from "@/lib/validation/schemas";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * This endpoint is reached by a human clicking a button in an approval email
+ * (see `automation/trigger`), so it answers with a rendered HTML page, never
+ * JSON. Validation therefore uses `safeParse` directly instead of
+ * `parseSearchParams` — the shared helper returns a JSON 400, which would strand
+ * the approver on a blank page.
+ *
+ * `token` is the sha256 approval token minted in `automation/trigger`, so it is
+ * always 64 lowercase hex characters. It is bounded by length and charset here
+ * and is deliberately never echoed into a response or a log line.
+ */
+const ExternalApproveQuery = z.object({
+  logId: uuid,
+  action: z.enum(["publish", "schedule", "reject"]),
+  token: z.string().regex(/^[a-f0-9]{64}$/, "Invalid approval token."),
+});
 
 function getNextPostTime(postTimeStr: string): Date {
   const [h, m, s] = postTimeStr.split(":").map(Number);
@@ -18,13 +37,27 @@ function getNextPostTime(postTimeStr: string): Date {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const logId = searchParams.get("logId");
-  const action = searchParams.get("action");
-  const token = searchParams.get("token");
+  const rawParams = {
+    logId: searchParams.get("logId"),
+    action: searchParams.get("action"),
+    token: searchParams.get("token"),
+  };
 
-  if (!logId || !action || !token) {
+  // Preserved verbatim: a link that lost its query string still reports
+  // "Missing parameters" exactly as before.
+  if (!rawParams.logId || !rawParams.action || !rawParams.token) {
     return renderHtmlResponse("Missing parameters", false);
   }
+
+  const parsedParams = ExternalApproveQuery.safeParse(rawParams);
+  if (!parsedParams.success) {
+    // Deliberately generic, and deliberately not echoing the token back.
+    return renderHtmlResponse(
+      "This approval link is not valid. Please use the buttons in the original approval email.",
+      false,
+    );
+  }
+  const { logId, action, token } = parsedParams.data;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;

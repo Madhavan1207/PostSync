@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageSubmittedReports, canViewReportsSection } from "@/lib/workspace/permissions";
+import { parseRouteParams } from "@/lib/validation/http";
+import { idParams } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +14,10 @@ export const dynamic = "force-dynamic";
 // personally submitted (their submission history). Creator/Manager-
 // without-permission get a 403 — Manager can view but not manage.
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

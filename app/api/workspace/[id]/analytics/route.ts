@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAnalyticsDashboard, type AnalyticsAccount } from "@/lib/analytics/social-analytics";
 import { readWorkspaceAnalyticsCache, writeWorkspaceAnalyticsCache } from "@/lib/analytics/analytics-cache";
 import { getActionLabel, type WorkspaceAction } from "@/lib/workspace/activity-logger";
+import { parseRouteParams } from "@/lib/validation/http";
+import { idParams } from "@/lib/validation/schemas";
 import type { WorkspaceRole, ScheduledPost } from "@/types";
 import { canViewTeamAnalytics } from "@/lib/workspace/permissions";
 
@@ -18,7 +20,10 @@ export const dynamic = "force-dynamic";
 // this raw data — same approach the Solo Analytics page already uses
 // for its own trend/period filters.
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();

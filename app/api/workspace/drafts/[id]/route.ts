@@ -3,9 +3,26 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canEditDraft, canDeleteDraft } from "@/lib/workspace/permissions";
+import { z } from "zod";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { httpUrl, idParams, platformId } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Compose sends all four fields on every save, but each stays optional: the
+ * handler falls back to the draft's current value for anything missing, so a
+ * partial PATCH is already meaningful. `description` is a plain optional
+ * string, not `optionalString()` — the column is `text NOT NULL DEFAULT ''`
+ * and "" is how the caption gets cleared.
+ */
+const UpdateDraftBody = z.object({
+  title: z.string().trim().max(500, "Must be 500 characters or fewer.").optional(),
+  description: z.string().trim().max(20_000, "Must be 20000 characters or fewer.").optional(),
+  media_urls: z.array(httpUrl.max(2_048, "Must be 2048 characters or fewer.")).max(20, "At most 20 media items.").optional(),
+  platforms: z.array(platformId).max(20, "Too many platforms.").optional(),
+});
 
 async function getMembershipAndDraft(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -21,7 +38,10 @@ async function getMembershipAndDraft(
 
 // ── GET /api/workspace/drafts/[id] ──────────────────────────
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -46,7 +66,10 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 
 // ── PATCH /api/workspace/drafts/[id] ────────────────────────
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -77,7 +100,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     return NextResponse.json({ error: `Cannot edit a draft with status: ${draft.status}` }, { status: 400 });
   }
 
-  const { title, description, media_urls, platforms } = await req.json();
+  const parsed = await parseJsonBody(req, UpdateDraftBody);
+  if (!parsed.success) return parsed.response;
+  const { title, description, media_urls, platforms } = parsed.data;
 
   const { data: updated, error } = await supabase
     .from("workspace_drafts")
@@ -108,7 +133,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
 // ── DELETE /api/workspace/drafts/[id] ───────────────────────
 export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();

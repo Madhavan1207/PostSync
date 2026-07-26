@@ -1,9 +1,29 @@
+import { z } from "zod";
+import { parseJsonBody } from "@/lib/validation/http";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createBlueskySession, fetchBlueskyProfile, BLUESKY_PLATFORM } from "@/lib/integrations/bluesky";
 import { upsertSocialAccount } from "@/lib/integrations/upsert-social-account";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
+
+/**
+ * `handle` is a Bluesky handle (a DNS-style name such as `alice.bsky.social`),
+ * `appPassword` an app-specific password — never the account password. Both are
+ * bounded; the handle is shape-checked so a malformed value never reaches the PDS
+ * login call.
+ */
+const BlueskyConnectBody = z.object({
+  handle: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, "Handle and app password are required.")
+    .max(253)
+    .regex(/^@?[a-z0-9.-]+$/, "Enter a valid Bluesky handle."),
+  appPassword: z.string().min(1, "Handle and app password are required.").max(256),
+  workspaceId: z.string().uuid().nullish(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +37,11 @@ export async function POST(request: Request) {
   // "Accounts" tab — in that case the account belongs to the workspace,
   // not to whichever member ran the connect flow. Personal connects
   // (from Integrations) never send this and behave exactly as before.
-  const { handle, appPassword, workspaceId } = await request.json();
-
-  if (!handle || !appPassword) {
-    return NextResponse.json({ error: "Handle and app password are required." }, { status: 400 });
-  }
+  const parsedBody = await parseJsonBody(request, BlueskyConnectBody, {
+    message: "Handle and app password are required.",
+  });
+  if (!parsedBody.success) return parsedBody.response;
+  const { handle, appPassword, workspaceId } = parsedBody.data;
 
   if (workspaceId) {
     const { data: membership } = await supabase

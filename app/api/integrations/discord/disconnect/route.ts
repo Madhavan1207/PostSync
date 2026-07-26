@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DISCORD_PLATFORM } from "@/lib/integrations/discord";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
+import { readWorkspaceIdParam } from "@/lib/validation/oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,12 @@ export async function DELETE(request: Request) {
 
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const workspaceId = requestUrl.searchParams.get("workspaceId");
+  // Fetch-called endpoint, so an invalid id is a normal 400 rather than a redirect.
+  const workspaceParam = readWorkspaceIdParam(requestUrl);
+  if (workspaceParam.present && !workspaceParam.valid) {
+    return NextResponse.json({ error: "Invalid workspace id." }, { status: 400 });
+  }
+  const workspaceId = workspaceParam.present ? workspaceParam.workspaceId : null;
 
   if (workspaceId) {
     const { data: membership } = await supabase

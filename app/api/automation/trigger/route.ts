@@ -1,12 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createBaseClient } from "@supabase/supabase-js";
+import { parseSearchParams } from "@/lib/validation/http";
+import { uuid } from "@/lib/validation/schemas";
 import { createHash } from "crypto";
 import { PLATFORM_COMPOSE_RULES, type ComposePlatformId, type PlatformComposeRule } from "@/lib/compose/platform-rules";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ScheduledPost } from "@/types";
 
 export const maxDuration = 60; // Allow execution to take up to 60 seconds
+
+/**
+ * Both params are optional: the global cron tick (pg_cron / a service-role
+ * caller) sends neither, and the admin panel's manual trigger sends neither
+ * either. Only the Automation page's "test run" sends both.
+ *
+ * `user_id` selects which account the run impersonates, so it must be a
+ * well-formed ID before it reaches `getUserById` — note the handler only honours
+ * it at all when the caller already presented the service-role key.
+ * `test` keeps its strict "true" comparison rather than becoming a loose boolean,
+ * so `?test=1` does not newly start bypassing the schedule-time check.
+ */
+const AutomationTriggerQuery = z.object({
+  user_id: uuid.optional(),
+  test: z.enum(["true", "false"]).optional(),
+});
 
 const POLLINATIONS_TEXT_URL = "https://text.pollinations.ai/";
 const POLLINATIONS_IMAGE_URL = "https://image.pollinations.ai/prompt/";
@@ -146,6 +165,10 @@ export async function POST(req: NextRequest) {
 }
 
 async function triggerAutomation(req: NextRequest) {
+  const parsedQuery = parseSearchParams(req.nextUrl, AutomationTriggerQuery);
+  if (!parsedQuery.success) return parsedQuery.response;
+  const { user_id: queryUserId, test: testParam } = parsedQuery.data;
+
   const authHeader = req.headers.get("Authorization");
   const isServiceRole = authHeader === `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`;
 
@@ -153,7 +176,7 @@ async function triggerAutomation(req: NextRequest) {
   let user = null;
 
   // 1. Check Global Scheduler Tick (Supabase pg_cron or Vercel cron hitting without a user session / specific user query)
-  if (isServiceRole && !req.headers.get("X-User-Id") && !req.nextUrl.searchParams.get("user_id")) {
+  if (isServiceRole && !req.headers.get("X-User-Id") && !queryUserId) {
     const baseClient = createBaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -215,7 +238,7 @@ async function triggerAutomation(req: NextRequest) {
 
   // 2. Resolve Single User Context (Test run or targeted bypass calls)
   if (isServiceRole) {
-    const targetUserId = req.headers.get("X-User-Id") || req.nextUrl.searchParams.get("user_id");
+    const targetUserId = req.headers.get("X-User-Id") || queryUserId;
     if (targetUserId) {
       const baseClient = createBaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -236,7 +259,7 @@ async function triggerAutomation(req: NextRequest) {
   }
 
   const userId = user.id;
-  const isManualTest = req.nextUrl.searchParams.get("test") === "true";
+  const isManualTest = testParam === "true";
 
   try {
     const { data: settings, error: settingsError } = await supabase

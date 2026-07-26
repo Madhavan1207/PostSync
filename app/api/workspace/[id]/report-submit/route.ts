@@ -4,9 +4,37 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canSubmitReport, canViewTeamAnalytics } from "@/lib/workspace/permissions";
 import { getMemberIdsByRole, notifyWorkspaceUsers } from "@/lib/workspace/notifications";
+import { z } from "zod";
+import { parseJsonBody, parseRouteParams, parseSearchParams } from "@/lib/validation/http";
+import { idParams } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+/** `range_from` / `range_to` are `date` columns; the client sends YYYY-MM-DD. */
+const rangeDate = z.iso.date("Must be a YYYY-MM-DD date.");
+const rangeKey = z.enum(["today", "7d", "30d", "custom"]);
+
+/** Both were already required — an absent `from`/`to` was a 400 before, too. */
+const ReportSubmitQuery = z.object({ from: rangeDate, to: rangeDate });
+
+/**
+ * The text columns are `NOT NULL DEFAULT ''` and the handler coerces absent to
+ * "", so these stay plain optional strings rather than `optionalString()`.
+ * `chartsData` / `analyticsData` are snapshot blobs written straight to `jsonb`
+ * columns; their inner shape is the dashboard's concern, so they are validated
+ * as JSON objects rather than field-by-field.
+ */
+const SubmitReportBody = z.object({
+  rangeKey: rangeKey.optional(),
+  from: rangeDate,
+  to: rangeDate,
+  executiveSummary: z.string().max(20_000, "Must be 20000 characters or fewer.").optional(),
+  observations: z.string().max(10_000, "Must be 10000 characters or fewer.").optional(),
+  recommendations: z.string().max(10_000, "Must be 10000 characters or fewer.").optional(),
+  chartsData: z.record(z.string(), z.unknown()).optional(),
+  analyticsData: z.record(z.string(), z.unknown()).optional(),
+});
 
 async function getMembership(supabase: Awaited<ReturnType<typeof createClient>>, workspaceId: string, userId: string) {
   const { data } = await supabase
@@ -23,7 +51,10 @@ async function getMembership(supabase: Awaited<ReturnType<typeof createClient>>,
 // so the Analyst dashboard knows whether to show "Submit Report",
 // "Resubmit Report" (changes requested), or a read-only "Submitted" state.
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -34,9 +65,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     return NextResponse.json({ error: "Not permitted to view this report." }, { status: 403 });
   }
 
-  const from = req.nextUrl.searchParams.get("from");
-  const to   = req.nextUrl.searchParams.get("to");
-  if (!from || !to) return NextResponse.json({ error: "from and to are required." }, { status: 400 });
+  const parsedQuery = parseSearchParams(req.nextUrl, ReportSubmitQuery);
+  if (!parsedQuery.success) return parsedQuery.response;
+  const { from, to } = parsedQuery.data;
 
   const { data: report } = await supabase
     .from("workspace_reports")
@@ -65,7 +96,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
 // Turns the working review into an official, workspace-visible
 // report and notifies every Owner/Manager.
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -77,9 +111,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Only the Analyst or Owner can submit this report." }, { status: 403 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const { rangeKey, from, to, observations, recommendations, executiveSummary, chartsData, analyticsData } = body || {};
-  if (!from || !to) return NextResponse.json({ error: "from and to are required." }, { status: 400 });
+  const parsed = await parseJsonBody(req, SubmitReportBody);
+  if (!parsed.success) return parsed.response;
+  const { rangeKey: bodyRangeKey, from, to, observations, recommendations, executiveSummary, chartsData, analyticsData } = parsed.data;
 
   const { data: existing } = await supabase
     .from("workspace_reports")
@@ -100,7 +134,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const fields = {
     workspace_id:         params.id,
-    range_key:            rangeKey || "custom",
+    range_key:            bodyRangeKey || "custom",
     range_from:            from,
     range_to:              to,
     status:               "submitted",

@@ -2,10 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { z } from "zod";
 import { canManageMembers, canChangeRoles } from "@/lib/workspace/permissions";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { uuid, workspaceRole } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+const MemberParams = z.object({ id: uuid, memberId: uuid });
+
+/** `owner` is excluded — ownership only moves via the transfer route. */
+const UpdateMemberRoleBody = z.object({
+  role: workspaceRole.exclude(["owner"]),
+});
 
 async function getUserRole(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -27,7 +37,10 @@ export async function PATCH(
   req: NextRequest,
   props: { params: Promise<{ id: string; memberId: string }> }
 ) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, MemberParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -38,11 +51,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Only the workspace owner can change roles." }, { status: 403 });
   }
 
-  const { role: newRole } = await req.json();
-  const validRoles: WorkspaceRole[] = ["manager", "creator", "analyst"];
-  if (!validRoles.includes(newRole)) {
-    return NextResponse.json({ error: "Invalid role. Cannot assign owner role directly." }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(req, UpdateMemberRoleBody);
+  if (!parsed.success) return parsed.response;
+  const { role: newRole } = parsed.data;
 
   // Get the target member
   const { data: targetMember, error: fetchError } = await supabase
@@ -96,7 +107,10 @@ export async function DELETE(
   _req: NextRequest,
   props: { params: Promise<{ id: string; memberId: string }> }
 ) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, MemberParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();

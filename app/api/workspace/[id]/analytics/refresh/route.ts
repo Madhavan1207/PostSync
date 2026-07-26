@@ -7,17 +7,31 @@ import {
   markWorkspaceCacheRefreshing,
   invalidateWorkspaceAnalyticsCache,
 } from "@/lib/analytics/analytics-cache";
+import { z } from "zod";
+import { parseOptionalJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { idParams } from "@/lib/validation/schemas";
 import type { WorkspaceRole, ScheduledPost } from "@/types";
 import { canViewTeamAnalytics } from "@/lib/workspace/permissions";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * `force` is the only field either call site sends. It stays optional so an
+ * omitted flag keeps meaning "background refresh" (force = false).
+ */
+const RefreshAnalyticsBody = z.object({
+  force: z.boolean().optional(),
+});
 
 // POST /api/workspace/[id]/analytics/refresh
 // Same two call sites as the personal version:
 //   1. Background refresh when the dashboard detects a stale cache
 //   2. The "Refresh" button (force = true — invalidates cache first)
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -34,8 +48,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Creators cannot view team analytics." }, { status: 403 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const force = body?.force === true;
+  // Body may be omitted entirely — a bodyless POST means a background refresh.
+  const parsed = await parseOptionalJsonBody(req, RefreshAnalyticsBody);
+  if (!parsed.success) return parsed.response;
+  const force = parsed.data.force === true;
 
   if (force) {
     await invalidateWorkspaceAnalyticsCache(params.id);

@@ -1,16 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { refreshYouTubeAccessToken } from "@/lib/integrations/youtube";
+import { parseJsonBody } from "@/lib/validation/http";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * The Calendar is the only caller and always sends `youtube_video_id` (it only
+ * reaches this route when `post.youtube_video_id` is set), so the field stays
+ * required. The value is placed in the body of a Google Data API call, so it is
+ * constrained to the YouTube video-ID charset rather than left as free text.
+ */
+const PublishYouTubeBody = z.object({
+  youtube_video_id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[A-Za-z0-9_-]+$/, "Must be a valid YouTube video ID."),
+});
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { youtube_video_id } = await req.json();
-  if (!youtube_video_id) return NextResponse.json({ error: "No youtube_video_id provided" }, { status: 400 });
+  const parsed = await parseJsonBody(req, PublishYouTubeBody, {
+    message: "No youtube_video_id provided",
+  });
+  if (!parsed.success) return parsed.response;
+  const { youtube_video_id } = parsed.data;
 
   const { data: account } = await supabase
     .from("social_accounts")

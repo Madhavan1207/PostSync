@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { z } from "zod";
 import { canManageMembers } from "@/lib/workspace/permissions";
+import { parseRouteParams } from "@/lib/validation/http";
+import { uuid } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+const InviteParams = z.object({ id: uuid, inviteId: uuid });
 
 // ── DELETE /api/workspace/[id]/invites/[inviteId] ───────────
 // Cancels a pending invite (owner/manager only). Lets the same
@@ -13,7 +18,10 @@ export async function DELETE(
   _req: NextRequest,
   props: { params: Promise<{ id: string; inviteId: string }> }
 ) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, InviteParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

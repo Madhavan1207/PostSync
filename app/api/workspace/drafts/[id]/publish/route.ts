@@ -3,9 +3,24 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canPublish } from "@/lib/workspace/permissions";
+import { z } from "zod";
+import { parseOptionalJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { idParams, isoDateTime } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Shared by POST (schedule-or-publish-now) and PATCH (reschedule).
+ *
+ * `scheduled_time` is optional here even though PATCH requires it: on POST its
+ * absence is what selects "publish now", and PATCH keeps its own explicit
+ * check so the caller still gets the specific "scheduled_time is required."
+ * message rather than a generic field error.
+ */
+const PublishBody = z.object({
+  scheduled_time: isoDateTime.optional(),
+});
 
 function mediaTypeFor(url: string) {
   return /\.(mp4|mov|webm|avi)(\?|$)/i.test(url) ? "video" : "image";
@@ -24,7 +39,10 @@ function mediaTypeFor(url: string) {
 //   - scheduled_time omitted  -> publish immediately, draft.status =
 //                                "published" or "failed"
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -59,8 +77,11 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: "This draft has no platforms selected." }, { status: 400 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const scheduledTime: string | null = body?.scheduled_time || null;
+  // "Publish Now" sends `{}` and the route already tolerated a bodyless
+  // request, so a missing body must stay a publish-now, not a 400.
+  const parsed = await parseOptionalJsonBody(req, PublishBody);
+  if (!parsed.success) return parsed.response;
+  const scheduledTime: string | null = parsed.data.scheduled_time || null;
 
   const { data: userData } = await admin.auth.admin.getUserById(user.id);
   const userName = userData?.user?.user_metadata?.full_name || userData?.user?.email || "Unknown";
@@ -230,7 +251,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 // ── PATCH /api/workspace/drafts/[id]/publish ────────────────
 // Reschedule an already-scheduled draft to a new time.
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -258,8 +282,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     return NextResponse.json({ error: "Only scheduled drafts can be rescheduled." }, { status: 400 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const scheduledTime: string | null = body?.scheduled_time || null;
+  const parsed = await parseOptionalJsonBody(req, PublishBody);
+  if (!parsed.success) return parsed.response;
+  const scheduledTime: string | null = parsed.data.scheduled_time || null;
   if (!scheduledTime) return NextResponse.json({ error: "scheduled_time is required." }, { status: 400 });
 
   const { error: updateScheduledPostError } = await supabase

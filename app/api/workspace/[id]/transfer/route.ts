@@ -2,14 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { z } from "zod";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { idParams, uuid } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
 
+/** `targetUserId` is an auth.users UUID, matched against workspace_members.user_id. */
+const TransferOwnershipBody = z.object({
+  targetUserId: uuid,
+});
+
 // ── POST /api/workspace/[id]/transfer ───────────────────────
 // Transfer ownership to another member (owner only)
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -27,10 +38,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Only the owner can transfer ownership." }, { status: 403 });
   }
 
-  const { targetUserId } = await req.json();
-  if (!targetUserId) {
-    return NextResponse.json({ error: "targetUserId is required." }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(req, TransferOwnershipBody);
+  if (!parsed.success) return parsed.response;
+  const { targetUserId } = parsed.data;
 
   if (targetUserId === user.id) {
     return NextResponse.json({ error: "You are already the owner." }, { status: 400 });

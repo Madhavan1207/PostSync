@@ -1,7 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { canPublish } from "@/lib/workspace/permissions";
+import { parseJsonBody, parseSearchParams } from "@/lib/validation/http";
+import { httpUrl, isoDateTime, platformId, uuid } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
+
+const ListQuery = z.object({
+  workspace_id: uuid.optional(),
+});
+
+/**
+ * `scheduled_time` is the only required field — the handler defaults every
+ * other column, and previously hand-rolled the same 400 for a missing time.
+ *
+ * The pre-upload ids and workspace links are `.nullish()`: Compose always
+ * sends the `linkedin_media_urn` / `youtube_video_id` keys and sets them to
+ * `null` when there was no video to pre-upload, so `null` must stay valid.
+ */
+const CreateScheduledPostBody = z.object({
+  title: z.string().trim().max(500, "Must be 500 characters or fewer.").optional(),
+  description: z.string().trim().max(20_000, "Must be 20000 characters or fewer.").optional(),
+  media_urls: z.array(httpUrl.max(2_048, "Must be 2048 characters or fewer.")).max(20, "At most 20 media items.").optional(),
+  platforms: z.array(platformId).max(20, "Too many platforms.").optional(),
+  scheduled_time: isoDateTime,
+  linkedin_media_urn: z.string().trim().max(255, "Must be 255 characters or fewer.").nullish(),
+  youtube_video_id: z.string().trim().max(255, "Must be 255 characters or fewer.").nullish(),
+  workspace_id: uuid.nullish(),
+  workspace_draft_id: uuid.nullish(),
+});
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -11,7 +38,9 @@ export async function GET(req: NextRequest) {
   // ?workspace_id= lets the Team Workspace Calendar/Drafts views list posts
   // scheduled for the whole workspace. Omitted, this is the unchanged
   // solo-user query (only the caller's own personal posts).
-  const workspaceId = req.nextUrl.searchParams.get("workspace_id");
+  const parsedQuery = parseSearchParams(req.nextUrl, ListQuery);
+  if (!parsedQuery.success) return parsedQuery.response;
+  const workspaceId = parsedQuery.data.workspace_id;
 
   let query = supabase
     .from("scheduled_posts")
@@ -31,18 +60,15 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  const parsed = await parseJsonBody(req, CreateScheduledPostBody);
+  if (!parsed.success) return parsed.response;
   const {
     title, description, media_urls, platforms, scheduled_time,
     linkedin_media_urn, youtube_video_id,
     // Only sent by Team Workspace flows (see workspace/drafts/[id]/publish).
     // Solo users never send these and get identical behavior to before.
     workspace_id, workspace_draft_id,
-  } = body;
-
-  if (!scheduled_time) {
-    return NextResponse.json({ error: "scheduled_time is required" }, { status: 400 });
-  }
+  } = parsed.data;
 
   if (workspace_id) {
     const { data: membership } = await supabase

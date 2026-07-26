@@ -4,9 +4,22 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
 import { canRequestReportChanges } from "@/lib/workspace/permissions";
 import { notifyWorkspaceUsers } from "@/lib/workspace/notifications";
+import { z } from "zod";
+import { parseJsonBody, parseRouteParams } from "@/lib/validation/http";
+import { uuid } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+const ReportParams = z.object({ id: uuid, reportId: uuid });
+
+/**
+ * `note` stays optional: `change_request_note` is nullable and the handler
+ * already stores `null` for an empty note.
+ */
+const RequestChangesBody = z.object({
+  note: z.string().max(2_000, "Must be 2000 characters or fewer.").optional(),
+});
 
 // POST /api/workspace/[id]/reports/[reportId]/request-changes
 // Body: { note }
@@ -17,7 +30,10 @@ export async function POST(
   req: NextRequest,
   props: { params: Promise<{ id: string; reportId: string }> }
 ) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, ReportParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin    = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -34,8 +50,9 @@ export async function POST(
     return NextResponse.json({ error: "Only the Owner or Manager can request changes on a report." }, { status: 403 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const note = (body?.note ?? "").toString().trim();
+  const parsed = await parseJsonBody(req, RequestChangesBody);
+  if (!parsed.success) return parsed.response;
+  const note = (parsed.data.note ?? "").trim();
 
   const { data: existing } = await supabase
     .from("workspace_reports")

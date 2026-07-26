@@ -1,9 +1,32 @@
+import { z } from "zod";
+import { parseJsonBody } from "@/lib/validation/http";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTelegramBotInfo, fetchTelegramChatInfo, TELEGRAM_PLATFORM } from "@/lib/integrations/telegram";
 import { upsertSocialAccount } from "@/lib/integrations/upsert-social-account";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
+
+/**
+ * Telegram bot tokens look like `<bot_id>:<secret>`; chat ids are either a numeric
+ * id (possibly negative for groups) or an `@channelname`. Shape-checking both
+ * stops a malformed value reaching the Telegram API call.
+ */
+const TelegramConnectBody = z.object({
+  botToken: z
+    .string()
+    .trim()
+    .min(1, "Bot token and Chat/Channel ID are required.")
+    .max(256)
+    .regex(/^\d+:[A-Za-z0-9_-]+$/, "Enter a valid Telegram bot token."),
+  chatId: z
+    .string()
+    .trim()
+    .min(1, "Bot token and Chat/Channel ID are required.")
+    .max(128)
+    .regex(/^(-?\d+|@[A-Za-z0-9_]{5,})$/, "Enter a numeric chat id or an @channelname."),
+  workspaceId: z.string().uuid().nullish(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +36,11 @@ export async function POST(request: Request) {
 
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const { botToken, chatId, workspaceId } = await request.json();
-
-  if (!botToken || !chatId) {
-    return NextResponse.json({ error: "Bot token and Chat/Channel ID are required." }, { status: 400 });
-  }
+  const parsedBody = await parseJsonBody(request, TelegramConnectBody, {
+    message: "Bot token and Chat/Channel ID are required.",
+  });
+  if (!parsedBody.success) return parsedBody.response;
+  const { botToken, chatId, workspaceId } = parsedBody.data;
 
   if (workspaceId) {
     const { data: membership } = await supabase

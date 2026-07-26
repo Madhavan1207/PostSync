@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { readOAuth1CallbackParams } from "@/lib/validation/oauth";
 import {
   exchangeTwitterToken,
   fetchTwitterUser,
@@ -12,9 +13,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const oauthToken = requestUrl.searchParams.get("oauth_token");
-  const oauthVerifier = requestUrl.searchParams.get("oauth_verifier");
-  const oauthError = requestUrl.searchParams.get("error");
+  // Validated and bounded; an invalid value reads as null so the existing
+  // redirect-on-missing branch below handles it exactly as before.
+  const {
+    oauthToken,
+    oauthVerifier,
+    error: oauthError,
+  } = readOAuth1CallbackParams(requestUrl);
   const supabase = await createClient();
 
   const redirect = (status: "connected" | "error", message?: string) => {

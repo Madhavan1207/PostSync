@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { upsertSocialAccount } from "@/lib/integrations/upsert-social-account";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import type { WorkspaceRole } from "@/types";
+import { readOAuthCallbackParams } from "@/lib/validation/oauth";
 import {
   discordGuildIconUrl,
   DISCORD_PLATFORM,
@@ -32,9 +33,9 @@ export async function GET(request: Request) {
     return response;
   };
 
-  const code = requestUrl.searchParams.get("code");
-  const state = requestUrl.searchParams.get("state");
-  const oauthError = requestUrl.searchParams.get("error");
+  // Validated and bounded; an invalid value reads as null so the existing
+  // "missing OAuth data" redirect below handles it exactly as before.
+  const { code, state, error: oauthError } = readOAuthCallbackParams(requestUrl);
   if (oauthError) return redirect("error", `Discord authorization failed: ${oauthError}`);
   if (!code || !state) return redirect("error", "Missing Discord authorization data.");
 

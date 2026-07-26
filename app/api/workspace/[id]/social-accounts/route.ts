@@ -3,9 +3,22 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageSocialAccounts } from "@/lib/workspace/permissions";
 import { logActivity, WorkspaceActions } from "@/lib/workspace/activity-logger";
+import { z } from "zod";
+import { parseRouteParams, parseSearchParams } from "@/lib/validation/http";
+import { idParams, nonEmptyString, platformId } from "@/lib/validation/schemas";
 import type { WorkspaceRole } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Both were already required — an absent `platform`/`accountId` was a 400 before.
+ * `platform` uses the shared enum: the column only ever holds a known platform id,
+ * so anything else could never have matched a row.
+ */
+const DisconnectAccountQuery = z.object({
+  platform: platformId,
+  accountId: nonEmptyString(255),
+});
 
 // ── GET /api/workspace/[id]/members ─── (helper, shared below) ─
 async function getMembership(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, workspaceId: string) {
@@ -22,7 +35,10 @@ async function getMembership(supabase: Awaited<ReturnType<typeof createClient>>,
 // Any workspace member can view which accounts the workspace is
 // connected to (read-only for Creators/Analysts).
 export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -59,7 +75,10 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 // ── DELETE /api/workspace/[id]/social-accounts?platform=X&accountId=Y
 // Only Owner/Manager can disconnect a workspace-owned account.
 export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+  const parsedParams = parseRouteParams(await props.params, idParams);
+  if (!parsedParams.success) return parsedParams.response;
+  const params = parsedParams.data;
+
   const supabase = await createClient();
   const admin = createAdminClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -72,11 +91,9 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     return NextResponse.json({ error: "Only the workspace Owner or a Manager can disconnect social accounts." }, { status: 403 });
   }
 
-  const platform = req.nextUrl.searchParams.get("platform");
-  const accountId = req.nextUrl.searchParams.get("accountId");
-  if (!platform || !accountId) {
-    return NextResponse.json({ error: "platform and accountId are required." }, { status: 400 });
-  }
+  const parsedQuery = parseSearchParams(req.nextUrl, DisconnectAccountQuery);
+  if (!parsedQuery.success) return parsedQuery.response;
+  const { platform, accountId } = parsedQuery.data;
 
   // Use the admin client for the delete so it isn't blocked by RLS edge cases,
   // but only after the membership + role check above has authorized it.

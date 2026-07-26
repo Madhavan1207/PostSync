@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { parseJsonBody } from "@/lib/validation/http";
 
 export const maxDuration = 60; // Allow up to 60 seconds execution time to prevent timeouts
 
@@ -29,6 +31,47 @@ interface AIGenerateRequest {
   geo?: string;
   category?: string;
 }
+
+/**
+ * `mode` selects a prompt template, so it is a closed set rather than a loose
+ * string — `satisfies` keeps it locked to the `AIGenerateMode` union above.
+ *
+ * `geo` and `category` are the two values that are NOT passed through
+ * `encodeURIComponent` before being interpolated into a Google News/Trends URL
+ * (`?geo=${geo}`, `topic/${category.toUpperCase()}`), so both are enums of
+ * exactly the options the Studio's dropdowns offer. Everything else reaches the
+ * URL via `encodeURIComponent` or only ever lands inside the prompt text, so
+ * those just need generous upper bounds — prompts here are long-form (a
+ * `rewrite`/`repurpose` `existingContent` is a whole post), but unbounded input
+ * would be forwarded verbatim to a third-party AI API.
+ */
+const aiGenerateMode = z.enum([
+  "caption",
+  "hashtags",
+  "hooks",
+  "cta",
+  "content-ideas",
+  "content-calendar",
+  "rewrite",
+  "repurpose",
+  "trends-list",
+  "trends-post",
+]) satisfies z.ZodType<AIGenerateMode>;
+
+const AIGenerateBody = z.object({
+  mode: aiGenerateMode,
+  topic: z.string().trim().max(2_000).optional(),
+  platform: z.string().trim().max(50).optional(),
+  tone: z.string().trim().max(100).optional(),
+  existingContent: z.string().trim().max(20_000).optional(),
+  targetPlatforms: z.array(z.string().trim().min(1).max(50)).max(15).optional(),
+  count: z.number().int().min(1).max(50).optional(),
+  keyword: z.string().trim().max(200).optional(),
+  geo: z.enum(["GLOBAL", "US", "IN", "GB", "CA", "AU", "DE", "FR", "JP"]).optional(),
+  category: z
+    .enum(["WORLD", "TECHNOLOGY", "BUSINESS", "SPORTS", "ENTERTAINMENT", "HEALTH", "SCIENCE"])
+    .optional(),
+});
 
 function buildPrompt(req: AIGenerateRequest): string {
   const { mode, topic, platform, tone, existingContent, targetPlatforms, count } = req;
@@ -321,12 +364,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body: AIGenerateRequest = await req.json();
+    const parsed = await parseJsonBody(req, AIGenerateBody);
+    if (!parsed.success) return parsed.response;
+    const body: AIGenerateRequest = parsed.data;
     const { mode } = body;
-
-    if (!mode) {
-      return NextResponse.json({ error: "mode is required" }, { status: 400 });
-    }
 
     const apiKey = process.env.POLLINATIONS_API_KEY;
     let prompt = "";
