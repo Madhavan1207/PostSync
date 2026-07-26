@@ -1,4 +1,4 @@
-# Authentication & Supabase — How Login and Data Storage Work
+# 2_ Authentication & Supabase — How Login and Data Storage Work
 
 ## 1. What Problem This Solves
 

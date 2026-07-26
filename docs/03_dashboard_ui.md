@@ -1,4 +1,4 @@
-# Dashboard UI & the Create Post Page
+# 3_ Dashboard UI & the Create Post Page
 
 This doc explains how the visual dashboard is built, how navigation works, and — specifically — how the **Draft Composer / Create Post** experience is structured as its **own dedicated page** (not a popup or a section squeezed into the dashboard home screen).
 

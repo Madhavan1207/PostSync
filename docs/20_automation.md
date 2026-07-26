@@ -1,4 +1,4 @@
-# PostSync Content Automation Guide
+# 20_ PostSync Content Automation Guide
 
 The PostSync Automation Engine automatically discovers hot industry trends, drafts high-performing social updates tailored to your brand voice, and publishes them natively to your channels.
 

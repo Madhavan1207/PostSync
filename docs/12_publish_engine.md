@@ -1,4 +1,4 @@
-# The Publish Engine — How One Click Posts to 8 Platforms
+# 12_ The Publish Engine — How One Click Posts to 8 Platforms
 
 File: `app/api/posts/publish/route.ts` (~900 lines — the largest single file in the project)
 

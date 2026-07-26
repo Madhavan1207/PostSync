@@ -1,4 +1,4 @@
-# Bluesky Integration
+# 6_ Bluesky Integration
 
 ## Status: ✅ Live & Working
 
