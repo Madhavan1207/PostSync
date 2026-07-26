@@ -1,4 +1,4 @@
-# 10_ Drafts — Developer Guide
+# 12_ Drafts — Developer Guide
 
 ## What is Drafts?
 

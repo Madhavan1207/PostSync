@@ -1,4 +1,4 @@
-# 19_ Discord Integration Guide
+# 20_ Discord Integration Guide
 
 The Discord integration allows creators to receive automated notification updates, real-time draft notifications, and external review links directly inside their Discord server.
 

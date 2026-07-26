@@ -1,4 +1,4 @@
-# 17_ Postelligence YouTube Integration Study Guide
+# 19_ Postelligence YouTube Integration Study Guide
 
 This guide explains how YouTube account connection was integrated into Postelligence from scratch. It follows the code currently running on `http://localhost:3000`.
 

@@ -1,4 +1,4 @@
-# 21_ Scheduled Posts — Developer Guide
+# 17_ Scheduled Posts — Developer Guide
 
 ## What is Scheduled Posts?
 
